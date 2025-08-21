@@ -57,7 +57,7 @@ class EncoderDecoderModule(LightningModule):
         metadata_embedder_output_dim: Optional[int] = None,
         non_shuffled_datamodule=None,
         temperature: float = 0.07,
-        max_seq_length: int = 512,
+        max_seq_length: int = 50,
         rec_model : Any = None,
     ) -> None:
         super().__init__()
