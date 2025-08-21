@@ -42,6 +42,39 @@ class ReconstructionModel(nn.Module):
     def model(self):
         return self
 
+#### define T5DecoderContruct module
+class T5ReconstructionDecoder(nn.Module):
+    def __init__(self, hidden_size: int, vocab_size: int, max_seq_length: int, num_layers: int = 6):
+        super().__init__()
+        self.max_seq_length = max_seq_length
+        config = T5Config(
+            d_model=hidden_size,
+            num_layers=num_layers,
+            num_heads=8,
+            d_ff=2048,
+            dropout_rate=0.1,
+            is_decoder=True,
+            add_cross_attention=False,  # No separate encoder states; treat input z as initial state
+            vocab_size=vocab_size,
+        )
+        self.decoder = T5Stack(config)
+        self.lm_head = nn.Linear(hidden_size, vocab_size, bias=False)
+
+    def forward(self, z):
+        # z: [batch_size, hidden_size] -> treat as initial embedding, expand to sequence
+        batch_size = z.size(0)
+        # Repeat z across sequence length to simulate a decoder input sequence
+        inputs_embeds = z.unsqueeze(1).repeat(1, self.max_seq_length, 1)  # [batch_size, max_seq_length, hidden_size]
+        # Dummy attention mask
+        attention_mask = torch.ones(batch_size, self.max_seq_length, device=z.device)
+        
+        outputs = self.decoder(inputs_embeds=inputs_embeds, attention_mask=attention_mask)
+        logits = self.lm_head(outputs.last_hidden_state)  # [batch_size, max_seq_length, vocab_size]
+        return logits
+
+    def model(self):
+        return self
+         
 #### define encoder-decoder module
 class EncoderDecoderModule(LightningModule):
     def __init__(
