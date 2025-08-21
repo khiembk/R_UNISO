@@ -13,7 +13,7 @@ from torch.nn import CrossEntropyLoss
 from torchmetrics import MaxMetric, MeanMetric, SpearmanCorrCoef
 from transformers import T5EncoderModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
-from transformers.models.t5.modeling_t5 import T5Stack
+from transformers.models.t5.modeling_t5 import T5Stack,T5Config
 from transformers.tokenization_utils_base import BatchEncoding
 
 ##### define reconction model
@@ -74,7 +74,7 @@ class T5ReconstructionDecoder(nn.Module):
 
     def model(self):
         return self
-         
+
 #### define encoder-decoder module
 class EncoderDecoderModule(LightningModule):
     def __init__(
@@ -115,10 +115,13 @@ class EncoderDecoderModule(LightningModule):
         self.decoder = decoder_model()
         self.temperature = temperature
         #### define reconstruction layer
-        self.rec_model = rec_model.model() if rec_model else ReconstructionModel(hidden_size=self.encoder_hidden_size,
+        # self.rec_model = rec_model.model() if rec_model else ReconstructionModel(hidden_size=self.encoder_hidden_size,
+        #         vocab_size=input_tokenizer.vocab_size,
+        #         max_seq_length=max_seq_length)
+        
+        self.rec_model = rec_model.model() if rec_model else T5ReconstructionDecoder(hidden_size=self.encoder_hidden_size,
                 vocab_size=input_tokenizer.vocab_size,
                 max_seq_length=max_seq_length)
-
 
         ###################################
         self.projection_head = nn.Sequential(
