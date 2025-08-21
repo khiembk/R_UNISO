@@ -192,7 +192,9 @@ def main(cfg: DictConfig) -> Optional[float]:
     :return: Optional[float] with optimized metric value.
     """
     # apply extra utilities
+    
     # (e.g. ask for tags if none are provided in cfg, print cfg tree, etc.)
+    print("DictConfig: ", cfg)
     extras(cfg)
 
     # train the model

@@ -48,7 +48,6 @@ class EncoderDecoderModule(LightningModule):
         self,
         encoder_model: T5EncoderModel,
         decoder_model: Callable[..., T5Stack],
-        rec_model : Any = None,
         input_tokenizer: Any,
         output_tokenizer: Any,
         optimizer: torch.optim.Optimizer,
@@ -59,6 +58,7 @@ class EncoderDecoderModule(LightningModule):
         non_shuffled_datamodule=None,
         temperature: float = 0.07,
         max_seq_length: int = 512,
+        rec_model : Any = None,
     ) -> None:
         super().__init__()
 

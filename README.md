@@ -87,6 +87,18 @@ python src/train_UniSO-T.py \
     experiment=UniSO-T-Improved \
     ++trainer.max_epochs=200
 ```
+For Encoder-Decoder, you can run by 
+```shell
+python src/train_encoder_decoder.py \
+    experiment=Encoder-Decoder \
+    ++trainer.max_epochs=200
+```
+
+
+
+
+
+
 For UniSO-N, you should first fine-tune a pre-trained T5 via
 ```shell
 python src/train_UniSO-N.py experiment=finetune_t5   
