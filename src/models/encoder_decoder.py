@@ -16,31 +16,7 @@ from transformers.modeling_outputs import Seq2SeqLMOutput
 from transformers.models.t5.modeling_t5 import T5Stack,T5Config
 from transformers.tokenization_utils_base import BatchEncoding
 
-##### define reconction model
-class ReconstructionModel(nn.Module):
-    def __init__(self, hidden_size: int, vocab_size: int, max_seq_length: int):
-        super().__init__()
-        # Project embedding to sequence of hidden states
-        self.proj = nn.Linear(hidden_size, hidden_size * max_seq_length)
-        self.norm = nn.LayerNorm(hidden_size)
-        self.out = nn.Linear(hidden_size, vocab_size)
-        self.max_seq_length = max_seq_length
 
-    def forward(self, z):
-        # z: [batch_size, hidden_size]
-        batch_size = z.size(0)
-        # Project to [batch_size, max_seq_length * hidden_size]
-        seq = self.proj(z)
-        # Reshape to [batch_size, max_seq_length, hidden_size]
-        seq = seq.view(batch_size, self.max_seq_length, -1)
-        # Normalize
-        seq = self.norm(seq)
-        # Project to logits: [batch_size, max_seq_length, vocab_size]
-        logits = self.out(seq)
-        return logits
-
-    def model(self):
-        return self
 
 #### define T5DecoderContruct module
 class T5ReconstructionDecoder(nn.Module):
@@ -114,10 +90,7 @@ class EncoderDecoderModule(LightningModule):
 
         self.decoder = decoder_model()
         self.temperature = temperature
-        #### define reconstruction layer
-        # self.rec_model = rec_model.model() if rec_model else ReconstructionModel(hidden_size=self.encoder_hidden_size,
-        #         vocab_size=input_tokenizer.vocab_size,
-        #         max_seq_length=max_seq_length)
+        
         
         self.rec_model = rec_model.model() if rec_model else T5ReconstructionDecoder(hidden_size=self.encoder_hidden_size,
                 vocab_size=input_tokenizer.vocab_size,

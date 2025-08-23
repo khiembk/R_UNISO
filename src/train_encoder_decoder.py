@@ -98,13 +98,16 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     if logger:
         log.info("Logging hyperparameters!")
         log_hyperparameters(object_dict)
-
+    ######## Begin training the model
     if cfg.get("train"):
         log.info("Starting training!")
+        print("Begin training...")
         trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
+    ##############################################################################################################
+    print("Finish traing...")
 
     train_metrics = trainer.callback_metrics
-
+    print("Start GA search...")
     if cfg.get("test"):
         log.info("Starting testing!")
         ckpt_path = trainer.checkpoint_callback.best_model_path
@@ -129,52 +132,19 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
                     new_key = k.replace("_orig_mod.", "")
                     new_state_dict[new_key] = v
                 model.load_state_dict(new_state_dict)
-                
+
+        print("Start loading traing data...")        
         task_names, tasks = get_tasks_from_suites(cfg.test_suites, root_dir)
         score_dict = {}
-
+        print("Finish loading traing data...")
         csv_dir = root_dir / "camera_csv_results"
         os.makedirs(csv_dir, exist_ok=True)
+
         for task_name, task_instance in zip(task_names, tasks):
             log.info(f"Instantiating searcher <{cfg.searcher._target_}>")
             with open(f"./data/{task_name}.metadata", "r") as f:
                 m = f.read()
-            searcher: BaseSearcher = hydra.utils.instantiate(
-                cfg.searcher,
-                task=task_instance,
-                score_fn=lambda x: omnipred_fitness_function_string(
-                    x, m=m, model=model, task_name=task_name,
-                ),
-                EVAL_STABILITY=task.eval_stability,
-            )
-
             
-            x_res = searcher.run()
-            tmp_dict = task_instance.evaluate(x_res, return_normalized_y=True)
-            res_dict = {}
-            for k, v in tmp_dict.items():
-                res_dict[f"{task_name}/{k}"] = v
-
-            score_dict.update(res_dict)
-
-            log.info("Final score statistics:")
-            csv_dir = root_dir / "camera_csv_results"
-            os.makedirs(csv_dir, exist_ok=True)
-            for score_desc, score in res_dict.items():
-                log.info(f"{score_desc}: {score}")
-                print(score_desc)
-                task_, metric_ = score_desc.split("/")
-                save_metric_to_csv(
-                    results_dir=csv_dir,
-                    task_name=task_,
-                    model_name=cfg.task_name,
-                    seed=cfg.get("seed"),
-                    metric_value=score,
-                    metric_name=metric_,
-                )
-                for logger0 in logger:
-                    logger0.log_metrics({score_desc: score}, step=1)
-
     # test_metrics = trainer.callback_metrics
     test_metrics = score_dict
 
