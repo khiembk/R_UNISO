@@ -19,9 +19,13 @@ import gpytorch
 from gaussian_process.GPlib import ExactGPModel
 from gaussian_process.GP import GP
 import design_bench
+from src.models import EncoderDecoderModule
 
+root_dir = rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True) 
+from src.tasks import get_tasks, get_tasks_from_suites
+from src.data.omnipred_datamodule import OmnipredDataModule
 class BaseRunner(ABC):
-    def __init__(self, config, encoder_model= None, decoder_model = None):
+    def __init__(self, config, model:EncoderDecoderModule, datamodule:OmnipredDataModule):
         self.net = None  # Neural Network
         self.optimizer = None  # optimizer
         self.scheduler = None  # scheduler
@@ -29,12 +33,16 @@ class BaseRunner(ABC):
         # set training params
         self.global_epoch = 0  # global epoch
         self.global_step = 0
-        
+        # set datamodule
+        self.datamodule = datamodule
         # set encoder-decoder
-        self.encoder_model = encoder_model
-        self.decoder_model = decoder_model  
-
-
+        self.encoder_model = model.encoder
+        self.decoder_model = model.rec_model  
+        self.input_tokenizer = model.input_tokenizer
+        self.shared = model.shared
+        self.projection_head = model.projection_head
+        self._emb_metadata = model._emb_metadata
+        # orginal code
         self.GAN_buffer = {}  # GAN buffer for Generative Adversarial Network
         self.topk_checkpoints = {}  # Top K checkpoints
 
@@ -77,50 +85,62 @@ class BaseRunner(ABC):
     
         self.offline_x = self.offline_x.to(self.config.training.device[0])
         self.offline_y = self.offline_y.to(self.config.training.device[0])
-
-    def get_offline_feature(self):
+    
+    def frozen_encoder_decoder(self):
         ### frozen encoder-decoder
         for p in self.decoder_model.parameters():
             p.requires_grad = False
         for p in self.encoder_model.parameters():
             p.requires_grad = False
-        #### get initial offline data 
-        offline_x, mean_offline_x, std_offline_x, offline_y, mean_offline_y, std_offline_y  = self.get_initial_offline_data()
-        #### need to get metadata
+        for p in self.shared.parameters():
+            p.requires_grad = False
+        for p in self.projection_head.parameters():
+            p.requires_grad = False
+        for p in self._emb_metadata.parameters():
+            p.requires_grad = False
+    
 
+   
 
-        #### extract x->x and return
-
-    def get_initial_offline_data(self):
-        if self.config.task.name != 'TFBind10-Exact-v0':
-            task = design_bench.make(self.config.task.name)
-        else:
-            task = design_bench.make(self.config.task.name,
-                                    dataset_kwargs={"max_samples": 10000})
-
-        offline_x = task.x
-        if task.is_discrete:
-            offline_x = task.to_logits(offline_x).reshape(offline_x.shape[0], -1)
-
-        mean_x = np.mean(offline_x, axis=0)
-        std_x = np.std(offline_x, axis=0)
-        std_x = np.where(std_x == 0, 1.0, std_x)
+    def get_offline_feature(self):
+        # frozen encoder-decoder
+        self.frozen_encoder_decoder()
+        #### get initial train loader 
+        train_dataloader = self.datamodule.train_dataloader()
+        z_offline = []
+        y_offline = []
+        meta_offline = []
+        for batch in train_dataloader:
+            with torch.no_grad():
+                input_embeds = self.shared(batch["input_ids"])
+                encoder_outputs = self.encoder_model(
+                inputs_embeds=input_embeds, attention_mask= batch["attention_mask"])
+                encoder_hidden_states = encoder_outputs.last_hidden_state
+                mean_pooled = self._mean_pooling(encoder_hidden_states, batch["attention_mask"])
+                projected_embeddings = self.projection_head(mean_pooled)
+                z_offline.append(projected_embeddings)
+                y_offline.append(batch["labels"])
+                m_embeddings = self._emb_metadata(batch["metadata"])
+                meta_offline.append(m_embeddings)
         
-        offline_y = task.y
-        mean_y = np.mean(offline_y, axis=0)
-        std_y = np.std(offline_y, axis=0)
-        
-        shuffle_idx = np.random.permutation(offline_x.shape[0])
+        return z_offline, y_offline, meta_offline
 
-        offline_x = offline_x[shuffle_idx]
-        offline_y = offline_y[shuffle_idx]
-        offline_y = offline_y.reshape(-1)
+
         
-        return torch.from_numpy(offline_x), torch.from_numpy(mean_x), torch.from_numpy(std_x), torch.from_numpy(offline_y), torch.from_numpy(mean_y), torch.from_numpy(std_y)
+    def _mean_pooling(self, token_embeddings: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+        sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
+        sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+        return sum_embeddings / sum_mask
+
+
+    
+        
 
 
 
     def _decode_x(self, z: torch.Tensor) -> np.ndarray:
+        self.frozen_encoder_decoder()
         ### decoder form z to x
         x_res = self.decoder_model(z)
         ### from token to numpy
