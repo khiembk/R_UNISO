@@ -11,8 +11,8 @@ import torch
 from abc import ABC, abstractmethod
 from tqdm.autonotebook import tqdm
 
-from runners.base.EMA import EMA
-from runners.utils import make_save_dirs, remove_file, sampling_data_from_GP, create_train_dataloader, create_val_dataloader, sampling_from_offline_data, testing_by_oracle
+from searcher.diffusion_bridge.EMA import EMA
+from searcher.diffusion_bridge.diff_utils import make_save_dirs, remove_file, sampling_data_from_GP, create_train_dataloader, create_val_dataloader, sampling_from_offline_data, testing_by_oracle
 import numpy as np
 
 import gpytorch 
@@ -21,7 +21,7 @@ from gaussian_process.GP import GP
 import design_bench
 
 class BaseRunner(ABC):
-    def __init__(self, config):
+    def __init__(self, config, encoder_model= None, decoder_model = None):
         self.net = None  # Neural Network
         self.optimizer = None  # optimizer
         self.scheduler = None  # scheduler
@@ -29,6 +29,11 @@ class BaseRunner(ABC):
         # set training params
         self.global_epoch = 0  # global epoch
         self.global_step = 0
+        
+        # set encoder-decoder
+        self.encoder_model = encoder_model
+        self.decoder_model = decoder_model  
+
 
         self.GAN_buffer = {}  # GAN buffer for Generative Adversarial Network
         self.topk_checkpoints = {}  # Top K checkpoints
@@ -63,17 +68,30 @@ class BaseRunner(ABC):
 
         # get offline data from design-bench
         
-        self.offline_x, self.mean_offline_x, self.std_offline_x, self.offline_y, self.mean_offline_y, self.std_offline_y = self.get_offline_data()
+        self.offline_z, self.mean_offline_z, self.std_offline_z, self.offline_y, self.mean_offline_y, self.std_offline_y = self.get_offline_feature()
         
-        if self.config.task.normalize_x:
-            self.offline_x = (self.offline_x - self.mean_offline_x) / self.std_offline_x
+        if self.config.task.normalize_z:
+            self.offline_z = (self.offline_z - self.mean_offline_z) / self.std_offline_z
         if self.config.task.normalize_y:
             self.offline_y = (self.offline_y - self.mean_offline_y) / self.std_offline_y
     
         self.offline_x = self.offline_x.to(self.config.training.device[0])
         self.offline_y = self.offline_y.to(self.config.training.device[0])
 
-    def get_offline_data(self):
+    def get_offline_feature(self):
+        ### frozen encoder-decoder
+        for p in self.decoder_model.parameters():
+            p.requires_grad = False
+        for p in self.encoder_model.parameters():
+            p.requires_grad = False
+        #### get initial offline data 
+        offline_x, mean_offline_x, std_offline_x, offline_y, mean_offline_y, std_offline_y  = self.get_initial_offline_data()
+        #### need to get metadata
+
+
+        #### extract x->x and return
+
+    def get_initial_offline_data(self):
         if self.config.task.name != 'TFBind10-Exact-v0':
             task = design_bench.make(self.config.task.name)
         else:
@@ -100,6 +118,28 @@ class BaseRunner(ABC):
         
         return torch.from_numpy(offline_x), torch.from_numpy(mean_x), torch.from_numpy(std_x), torch.from_numpy(offline_y), torch.from_numpy(mean_y), torch.from_numpy(std_y)
 
+
+
+    def _decode_x(self, z: torch.Tensor) -> np.ndarray:
+        ### decoder form z to x
+        x_res = self.decoder_model(z)
+        ### from token to numpy
+        x_res = inverse_batch_norm(x_res, self.model.batch_norm).detach().cpu().numpy()
+        if not isinstance(self.task, DesignBenchTask) and self.task.task_type in [
+            "Continuous",
+            "Integer",
+        ]:
+            x_res = np.clip(x_res, self.xl, self.xu)
+        if self.task.task_type == "Categorical":
+            x_res = x_res.reshape((-1,) + tuple(self.logits_shape))
+            x_res = self.task.task.to_integers(x_res)
+        elif self.task.task_type == "Integer":
+            x_res = x_res.astype(np.int64)
+        elif self.task.task_type == "Permutation":
+            x_res = x_res.argsort().argsort()
+        return x_res
+
+    
     # print msg
     def logger(self, msg, **kwargs):
         print(msg, **kwargs)
