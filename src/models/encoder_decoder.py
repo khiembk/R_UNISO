@@ -96,13 +96,13 @@ class EncoderDecoderModule(LightningModule):
                 vocab_size=input_tokenizer.vocab_size,
                 max_seq_length=max_seq_length)
 
-        ###################################
+        ##### define projecton head(out: 128)
         self.projection_head = nn.Sequential(
             nn.Linear(self.encoder_hidden_size, self.encoder_hidden_size),
             nn.ReLU(),
             nn.Linear(self.encoder_hidden_size, 128),
         )
-        #### preject meta data
+        #### define meta data projection head(out: 128)
         self.metadata_projection_head = nn.Sequential(
             nn.Linear(metadata_embedder_output_dim, metadata_embedder_output_dim),
             nn.ReLU(),
@@ -112,7 +112,7 @@ class EncoderDecoderModule(LightningModule):
         self.decoder_input_proj = nn.Linear(
             self.encoder_hidden_size, self.decoder_hidden_size
         )
-
+        
         self.lm_head = nn.Linear(
             self.decoder_hidden_size, decoder_config.vocab_size, bias=False
         )
@@ -199,22 +199,22 @@ class EncoderDecoderModule(LightningModule):
         encoder_outputs = self.encoder(
             inputs_embeds=input_embeds, attention_mask=attention_mask
         )
-
+        # Encoder output
         encoder_hidden_states = encoder_outputs.last_hidden_state
 
         mean_pooled = self._mean_pooling(encoder_hidden_states, attention_mask)
         projected_embeddings = self.projection_head(mean_pooled)
-        # Reconstruction 
-        recon_outputs = self.rec_model(mean_pooled)
+        # Reconstruction from projected embeddings
+        recon_outputs = self.rec_model(projected_embeddings)
         rec_loss = self.rec_loss(input_ids, recon_outputs) if input_ids is not None else None
 
 
 
-        # Decoder
+        # Decoder(define decoder input here)
         if decoder_input_ids is not None:
             decoder_inputs = self.shared(decoder_input_ids)
             decoder_inputs = self.decoder_input_proj(decoder_inputs)
-
+        # Decoder receive encoder hidden states
         decoder_outputs = self.decoder(
             inputs_embeds=decoder_inputs,
             attention_mask=decoder_attention_mask,
@@ -260,6 +260,7 @@ class EncoderDecoderModule(LightningModule):
     def training_step(
         self, batch: Dict[str, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
+        #### get next batch
         try:
             non_shuffled_batch = next(self.non_shuffled_train_iter)
         except:
@@ -283,6 +284,7 @@ class EncoderDecoderModule(LightningModule):
         with torch.no_grad():
             m_embeddings = self._emb_metadata(batch["metadata"])
         metadata_embeddings = self.metadata_projection_head(m_embeddings)
+        ##### compute contrastive loss
         contrastive_loss = self.contrastive_loss(
             outputs.projected_embeddings, 
             metadata_embeddings

@@ -65,6 +65,7 @@ class BBDMRunner(DiffusionBaseRunner):
             model_states['cond_latent_std'] = self.net.cond_latent_std
         return model_states, optimizer_scheduler_states
 
+    #### Compute loss function
     def loss_fn(self, net, batch, epoch, step, opt_idx=0, stage='train', write=True):
         (x_high, y_high), (x_low, y_low) = batch
         
