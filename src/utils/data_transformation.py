@@ -5,7 +5,7 @@ from lightning import LightningDataModule, LightningModule
 from src.models import OmniPredModule
 from src.tasks.base import OfflineBBOTask
 
-
+#### predict from numpy data
 @torch.no_grad()
 def omnipred_fitness_function_string(
     x: np.ndarray,
@@ -17,7 +17,7 @@ def omnipred_fitness_function_string(
     assert len(x.shape) == 1 or len(x.shape) == 2
     if len(x.shape) == 1:
         x = x.reshape(1, -1)
-
+    #### tokenize x numpy to string 
     batch_size, n_var = x.shape
     ms = tuple([m for _ in range(batch_size)])
 
@@ -32,7 +32,7 @@ def omnipred_fitness_function_string(
     input_tokens = model.input_tokenizer(
         input_str, padding="max_length", truncation=True, return_tensors="pt"
     )
-
+    ##### predict from string
     preds = model.generate_numbers(
         input_ids=input_tokens["input_ids"].to(model.device),
         attention_mask=input_tokens["attention_mask"].to(model.device),
@@ -52,7 +52,7 @@ def model_fitness_function_string(
     assert len(x.shape) == 1 or len(x.shape) == 2
     if len(x.shape) == 1:
         x = x.reshape(1, -1)
-
+    ##### using data module to tokenize the data
     batch_size, n_var = x.shape
     ms = tuple([m for _ in range(batch_size)])
 

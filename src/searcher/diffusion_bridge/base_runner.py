@@ -42,6 +42,7 @@ class BaseRunner(ABC):
         self.shared = model.shared
         self.projection_head = model.projection_head
         self._emb_metadata = model._emb_metadata
+        self.frozen_encoder_decoder()
         # orginal code
         self.GAN_buffer = {}  # GAN buffer for Generative Adversarial Network
         self.topk_checkpoints = {}  # Top K checkpoints
@@ -76,14 +77,21 @@ class BaseRunner(ABC):
 
         # get offline data from design-bench
         
-        self.offline_z, self.mean_offline_z, self.std_offline_z, self.offline_y, self.mean_offline_y, self.std_offline_y = self.get_offline_feature()
-        
+        self.offline_z, self.offline_y, self.metadata = self.get_offline_feature_z()
+        self.mean_offline_z = np.mean(self.offline_z)
+        self.std_offline_z = np.std(self.offline_z)
+        ###
+        self.mean_offline_y = np.mean(self.offline_y)
+        self.std_offline_y = np.std(self.offline_y)
+        ### 
+        self.distinct_meta = list(set(self.meta_offline))
+
         if self.config.task.normalize_z:
             self.offline_z = (self.offline_z - self.mean_offline_z) / self.std_offline_z
         if self.config.task.normalize_y:
             self.offline_y = (self.offline_y - self.mean_offline_y) / self.std_offline_y
     
-        self.offline_x = self.offline_x.to(self.config.training.device[0])
+        self.offline_z = self.offline_z.to(self.config.training.device[0])
         self.offline_y = self.offline_y.to(self.config.training.device[0])
     
     def frozen_encoder_decoder(self):
@@ -102,7 +110,7 @@ class BaseRunner(ABC):
 
    
 
-    def get_offline_feature(self):
+    def get_offline_feature_z(self):
         # frozen encoder-decoder
         self.frozen_encoder_decoder()
         #### get initial train loader 
@@ -125,17 +133,21 @@ class BaseRunner(ABC):
         
         return z_offline, y_offline, meta_offline
 
+    def load_feature_by_metadata(self, metadata_val):
+        z_offline= []
+        y_offline = []
+        for i in range(len(self.offline_z)):
+            if self.metadata[i] == metadata_val: 
+                z_offline.append(self.offline_z[i])
+                y_offline.append(self.offline_y[i])
 
+        return z_offline, y_offline
         
     def _mean_pooling(self, token_embeddings: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
         sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
         sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
         return sum_embeddings / sum_mask
-
-
-    
-        
 
 
 
@@ -386,41 +398,33 @@ class BaseRunner(ABC):
             noise = torch.tensor(self.config.GP.noise, device=self.config.training.device[0])
             mean_prior = torch.tensor(0.0, device = self.config.training.device[0]) 
             
-            if self.config.GP.type_of_initial_points == 'highest':
-                best_indices = torch.argsort(self.offline_y)[-1024:]
-                self.best_x = self.offline_x[best_indices]
-            elif self.config.GP.type_of_initial_points == 'lowest': 
-                best_indices = torch.argsort(self.offline_y)[:1024]
-                self.best_x = self.offline_x[best_indices]
-            else : 
-                self.best_x = self.offline_x 
-            
             val_loader = None
             val_dataset = []
             
             accumulate_grad_batches = self.config.training.accumulate_grad_batches 
             for epoch in range(start_epoch, self.config.training.n_epochs):
-                ### generate data from GP and create dataloader
-                start_time = time.time()
-                if self.config.task.name == 'TFBind8-Exact-v0': 
-                    selected_fit_samples = torch.randperm(self.offline_x.shape[0])[:self.config.GP.num_fit_samples]
-                    GP_Model = GP(device=self.config.training.device[0],
-                                x_train=self.offline_x[selected_fit_samples],
-                                y_train=self.offline_y[selected_fit_samples], 
-                                lengthscale=lengthscale, 
-                                variance=variance, 
-                                noise=noise, 
-                                mean_prior=mean_prior)
-                else: 
-                    GP_Model = GP(device=self.config.training.device[0],
-                                x_train=self.offline_x,
-                                y_train=self.offline_y, 
-                                lengthscale=lengthscale, 
-                                variance=variance, 
-                                noise=noise, 
-                                mean_prior=mean_prior)
                 
-                data_from_GP = sampling_data_from_GP(x_train=self.best_x,
+                for metadata in self.distinct_meta:
+                    start_time = time.time()
+                    self.offline_z_m, self.offline_y_m = self.load_feature_by_metadata(metadata = metadata)
+                    if self.config.GP.type_of_initial_points == 'highest':
+                        best_indices = torch.argsort(self.offline_y_m)[-1024:]
+                        self.best_z_m = self.offline_z_m[best_indices]
+                    elif self.config.GP.type_of_initial_points == 'lowest': 
+                        best_indices = torch.argsort(self.offline_y_m)[:1024]
+                        self.best_z_m = offline_z_m[best_indices]
+                    else : 
+                        self.best_z_m =  self.offline_z_m
+                    ### init GP model
+                    GP_Model = GP(device=self.config.training.device[0],
+                                x_train= self.offline_z_m,
+                                y_train= self.offline_y_m, 
+                                lengthscale=lengthscale, 
+                                variance=variance, 
+                                noise=noise, 
+                                mean_prior=mean_prior)
+                    ### generate data from GP
+                    data_from_GP = sampling_data_from_GP(x_train=self.best_z_m,
                                                     device=self.config.training.device[0],
                                                     GP_Model=GP_Model,
                                                     num_functions=self.config.GP.num_functions,
@@ -431,71 +435,72 @@ class BaseRunner(ABC):
                                                     delta_variance=self.config.GP.delta_variance,
                                                     seed=epoch,
                                                     threshold_diff=self.config.GP.threshold_diff)
-                train_loader, current_epoch_val_dataset = create_train_dataloader(data_from_GP=data_from_GP,
+
+                    train_loader, current_epoch_val_dataset = create_train_dataloader(data_from_GP=data_from_GP,
                                                         val_frac=self.config.training.val_frac,
                                                         batch_size=self.config.training.batch_size,
                                                         shuffle=True)
-                val_dataset = val_dataset + current_epoch_val_dataset
-                
-                pbar = tqdm(train_loader, total=len(train_loader), smoothing=0.01, disable=False)
-                self.global_epoch = epoch
-                for train_batch in pbar:
-                    self.global_step += 1
-                    self.net.train()
 
-                    losses = []
-                    for i in range(len(self.optimizer)):
-                        loss = self.loss_fn(net=self.net,
+                    val_dataset = val_dataset + current_epoch_val_dataset
+                
+                    pbar = tqdm(train_loader, total=len(train_loader), smoothing=0.01, disable=False)
+                    self.global_epoch = epoch
+                    for train_batch in pbar:
+                       self.global_step += 1
+                       self.net.train()
+
+                       losses = []
+                       for i in range(len(self.optimizer)):
+                            loss = self.loss_fn(net=self.net,
                                             batch=train_batch,
                                             epoch=epoch,
                                             step=self.global_step,
                                             opt_idx=i,
                                             stage='train')
 
-                        loss.backward()
-                        if self.global_step % accumulate_grad_batches == 0:
-                            self.optimizer[i].step()
-                            self.optimizer[i].zero_grad()
-                            if self.scheduler is not None:
-                                self.scheduler[i].step(loss)
-                        losses.append(loss.detach().mean())
+                            loss.backward()
+                            if self.global_step % accumulate_grad_batches == 0:
+                                self.optimizer[i].step()
+                                self.optimizer[i].zero_grad()
+                                if self.scheduler is not None:
+                                     self.scheduler[i].step(loss)
 
-                    if self.use_ema and self.global_step % (self.update_ema_interval*accumulate_grad_batches) == 0:
-                        self.step_ema()
+                            losses.append(loss.detach().mean())
 
-                    if len(self.optimizer) > 1:
-                        pbar.set_description(
-                            (
+                            if self.use_ema and self.global_step % (self.update_ema_interval*accumulate_grad_batches) == 0:
+                                self.step_ema()
+
+                            if len(self.optimizer) > 1:
+                                pbar.set_description(
+                                (
                                 f'Epoch: [{epoch + 1} / {self.config.training.n_epochs}] '
                                 f'iter: {self.global_step} loss-1: {losses[0]:.4f} loss-2: {losses[1]:.4f}'
-                            )
-                        )
-                    else:
-                        pbar.set_description(
+                                ))
+                            else:
+                                pbar.set_description(
                             (
                                 f'Epoch: [{epoch + 1} / {self.config.training.n_epochs}] '
                                 f'iter: {self.global_step} loss: {losses[0]:.4f}'
-                            )
-                        )
+                            ))
 
 
-                end_time = time.time()
-                elapsed_rounded = int(round((end_time-start_time)))
-                self.logger("training time: " + str(datetime.timedelta(seconds=elapsed_rounded)))
+                    end_time = time.time()
+                    elapsed_rounded = int(round((end_time-start_time)))
+                    self.logger("training time: " + str(datetime.timedelta(seconds=elapsed_rounded)))
                 
-                # validation
-                if (epoch + 1) % self.config.training.validation_interval == 0 or (
+                    # validation
+                    if (epoch + 1) % self.config.training.validation_interval == 0 or (
                         epoch + 1) == self.config.training.n_epochs:
-                    with torch.no_grad():
-                        val_loader = create_val_dataloader(val_dataset=val_dataset,
+                        with torch.no_grad():
+                            val_loader = create_val_dataloader(val_dataset=val_dataset,
                                                             batch_size=self.config.training.batch_size,
                                                             shuffle=False)
                         
-                        average_loss = self.validation_epoch(val_loader, epoch)
+                            average_loss = self.validation_epoch(val_loader, epoch)
                         
 
-                # save checkpoint
-                if (epoch + 1) % self.config.training.save_interval == 0 or \
+                    # save checkpoint
+                    if (epoch + 1) % self.config.training.save_interval == 0 or \
                         (epoch + 1) == self.config.training.n_epochs:
                         with torch.no_grad():
                             
