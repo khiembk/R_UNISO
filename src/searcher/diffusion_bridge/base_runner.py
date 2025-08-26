@@ -603,11 +603,12 @@ class BaseRunner(ABC):
         # return percentiles[0].item(), percentiles[1].item(), percentiles[2].item()
     
     @torch.no_grad()
-    def run(self, task_instance, task_name):
-        metadata = load_metadata_from_task_name(task_name)
+    def run(self, task_instance, task_name, metadata):
         m_embeddings = self._emb_metadata(metadata)
         self.offline_z_m, self.offline_y_m = self.load_feature_by_metadata(metadata= m_embeddings)
-        
+        mean_offline_y = np.mean(self.offline_y_m)
+        std_offline_y = np.std(self.offline_y_m)
+
         low_candidates, low_scores = sampling_from_offline_data(x=self.offline_z_m,
                                                                 y=self.offline_y_m,
                                                                 n_candidates=self.config.testing.num_candidates, 
@@ -617,9 +618,15 @@ class BaseRunner(ABC):
         if self.use_ema:
             self.apply_ema()
         self.net.eval()
+
+        task_to_min = {'TFBind8-Exact-v0': 0.0, 'TFBind10-Exact-v0': -1.8585268, 'AntMorphology-Exact-v0': -386.90036, 'DKittyMorphology-Exact-v0': -880.4585}
+        task_to_max = {'TFBind8-Exact-v0': 1.0, 'TFBind10-Exact-v0': 2.1287067, 'AntMorphology-Exact-v0': 590.24445, 'DKittyMorphology-Exact-v0': 340.90985}
+        task_to_best = {'TFBind8-Exact-v0': 0.43929616, 'TFBind10-Exact-v0': 0.005328223, 'AntMorphology-Exact-v0': 165.32648, 'DKittyMorphology-Exact-v0': 199.36252}
         
+        oracle_y_min = task_to_min[task_name]
+        oracle_y_max = task_to_max[task_name] 
         # normalize oracle_y_max by mean and std of offline data
-        normalized_oracle_y_max = (oracle_y_max - self.mean_offline_y) / self.std_offline_y
+        normalized_oracle_y_max = (oracle_y_max - mean_offline_y) / std_offline_y
         high_cond_scores = torch.full(low_scores.shape, normalized_oracle_y_max.item()*self.config.testing.alpha)
         
         high_candidates_z = self.sample(self.net, low_candidates, low_scores, high_cond_scores)
