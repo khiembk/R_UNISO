@@ -1,15 +1,15 @@
 import torch.optim.lr_scheduler
 from torch.utils.data import DataLoader
 
-from Register import Registers
-from model.BrownianBridge.BrownianBridgeModel import BrownianBridgeModel
-from runners.DiffusionBasedModelRunners.DiffusionBaseRunner import DiffusionBaseRunner
-from runners.utils import weights_init, get_optimizer
+
+from src.models.BrownianBridge.BrownianBridgeModel import BrownianBridgeModel
+from src.searcher.diffusion_bridge.diff_utils import weights_init, get_optimizer
+from src.searcher.diffusion_bridge.base_runner import BaseRunner
 from tqdm.autonotebook import tqdm
 
 
-@Registers.runners.register_with_name('BBDMRunner')
-class BBDMRunner(DiffusionBaseRunner):
+
+class BBDMRunner(BaseRunner):
     def __init__(self, config):
         super().__init__(config)
 

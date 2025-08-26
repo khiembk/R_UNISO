@@ -6,7 +6,7 @@ from torch.optim import Adam
 from src.searcher.base import BaseSearcher
 from src.tasks.design_bench_task import DesignBenchTask
 
-
+### recover x from normalize
 def inverse_batch_norm(
     normalized_x: torch.Tensor, batch_norm_layer: torch.nn.BatchNorm1d
 ):

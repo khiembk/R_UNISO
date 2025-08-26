@@ -151,22 +151,22 @@ class BaseRunner(ABC):
         return sum_embeddings / sum_mask
 
 
-
-    def _decode_x(self, z: torch.Tensor) -> np.ndarray:
+    @torch.no_grad()
+    def _decode_x(self, z: torch.Tensor, task) -> np.ndarray:
         self.frozen_encoder_decoder()
         ### decoder form z to x
-        x_res = self.decoder_model(z)
+        x_res = self.decoder_model(z).clone()
         ### from token to numpy
-        x_res = inverse_batch_norm(x_res, self.model.batch_norm).detach().cpu().numpy()
-        if not isinstance(self.task, DesignBenchTask) and self.task.task_type in [
+        x_res = inverse_batch_norm(x_res, self.encoder.batch_norm).detach().cpu().numpy()
+        if not isinstance(task, DesignBenchTask) and task.task_type in [
             "Continuous",
             "Integer",
         ]:
             x_res = np.clip(x_res, self.xl, self.xu)
-        if self.task.task_type == "Categorical":
+        if task.task_type == "Categorical":
             x_res = x_res.reshape((-1,) + tuple(self.logits_shape))
-            x_res = self.task.task.to_integers(x_res)
-        elif self.task.task_type == "Integer":
+            x_res = task.task.to_integers(x_res)
+        elif task.task_type == "Integer":
             x_res = x_res.astype(np.int64)
         elif self.task.task_type == "Permutation":
             x_res = x_res.argsort().argsort()
@@ -579,24 +579,52 @@ class BaseRunner(ABC):
         task_to_max = {'TFBind8-Exact-v0': 1.0, 'TFBind10-Exact-v0': 2.1287067, 'AntMorphology-Exact-v0': 590.24445, 'DKittyMorphology-Exact-v0': 340.90985}
         task_to_best = {'TFBind8-Exact-v0': 0.43929616, 'TFBind10-Exact-v0': 0.005328223, 'AntMorphology-Exact-v0': 165.32648, 'DKittyMorphology-Exact-v0': 199.36252}
         
-        oracle_y_min = task_to_min[self.config.task.name]
-        oracle_y_max = task_to_max[self.config.task.name] 
+        # oracle_y_min = task_to_min[self.config.task.name]
+        # oracle_y_max = task_to_max[self.config.task.name] 
+        # # normalize oracle_y_max by mean and std of offline data
+        # normalized_oracle_y_max = (oracle_y_max - self.mean_offline_y) / self.std_offline_y
+        # high_cond_scores = torch.full(low_scores.shape, normalized_oracle_y_max.item()*self.config.testing.alpha)
+        
+        # high_candidates_z = self.sample(self.net, low_candidates, low_scores, high_cond_scores)
+        # ### decode the to x space
+        # high_candidates = self._decode_x(high_candidates_z)
+        # # denormalize high_candidates
+        # high_candidates = high_candidates.cpu()
+        # denormalize_high_candidates = high_candidates * self.std_offline_x + self.mean_offline_x
+
+        # if task.is_discrete: 
+        #     denormalize_high_candidates = denormalize_high_candidates.reshape(denormalize_high_candidates.shape[0],task.x.shape[1],task.x.shape[2])
+        
+        # high_true_scores = task.predict(denormalize_high_candidates.numpy())
+        # # import pdb ; pdb.set_trace()
+        # final_score = (torch.from_numpy(high_true_scores) - oracle_y_min)/(oracle_y_max - oracle_y_min)    
+        # percentiles = torch.quantile(final_score, torch.tensor([1.0, 0.8, 0.5]), interpolation='higher') 
+        
+        # return percentiles[0].item(), percentiles[1].item(), percentiles[2].item()
+    
+    @torch.no_grad()
+    def run(self, task_instance, task_name):
+        metadata = load_metadata_from_task_name(task_name)
+        m_embeddings = self._emb_metadata(metadata)
+        self.offline_z_m, self.offline_y_m = self.load_feature_by_metadata(metadata= m_embeddings)
+        
+        low_candidates, low_scores = sampling_from_offline_data(x=self.offline_z_m,
+                                                                y=self.offline_y_m,
+                                                                n_candidates=self.config.testing.num_candidates, 
+                                                                type=self.config.testing.type_sampling,
+                                                                percentile_sampling=self.config.testing.percentile_sampling,
+                                                                seed=self.config.args.seed)
+        if self.use_ema:
+            self.apply_ema()
+        self.net.eval()
+        
         # normalize oracle_y_max by mean and std of offline data
         normalized_oracle_y_max = (oracle_y_max - self.mean_offline_y) / self.std_offline_y
         high_cond_scores = torch.full(low_scores.shape, normalized_oracle_y_max.item()*self.config.testing.alpha)
         
-        high_candidates = self.sample(self.net, low_candidates, low_scores, high_cond_scores)
-
-        # denormalize high_candidates
-        high_candidates = high_candidates.cpu()
-        denormalize_high_candidates = high_candidates * self.std_offline_x + self.mean_offline_x
-
-        if task.is_discrete: 
-            denormalize_high_candidates = denormalize_high_candidates.reshape(denormalize_high_candidates.shape[0],task.x.shape[1],task.x.shape[2])
+        high_candidates_z = self.sample(self.net, low_candidates, low_scores, high_cond_scores)
+        ### decode the to x space
+        high_candidates = self._decode_x(high_candidates_z, task_instance)
+         
         
-        high_true_scores = task.predict(denormalize_high_candidates.numpy())
-        # import pdb ; pdb.set_trace()
-        final_score = (torch.from_numpy(high_true_scores) - oracle_y_min)/(oracle_y_max - oracle_y_min)    
-        percentiles = torch.quantile(final_score, torch.tensor([1.0, 0.8, 0.5]), interpolation='higher') 
-        
-        return percentiles[0].item(), percentiles[1].item(), percentiles[2].item()
+        return high_candidates
