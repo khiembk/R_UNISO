@@ -91,7 +91,8 @@ For Encoder-Decoder, you can run by
 ```shell
 python src/train_encoder_decoder.py \
     experiment=Encoder-Decoder \
-    ++trainer.max_epochs=1
+    ++trainer.max_epochs=0  
+    
 ```
 
 

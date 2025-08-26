@@ -14,7 +14,7 @@ from tqdm.autonotebook import tqdm
 from searcher.diffusion_bridge.EMA import EMA
 from searcher.diffusion_bridge.diff_utils import make_save_dirs, remove_file, sampling_data_from_GP, create_train_dataloader, create_val_dataloader, sampling_from_offline_data, testing_by_oracle, load_metadata_from_task_name
 import numpy as np
-
+import omegaconf
 import gpytorch 
 from gaussian_process.GPlib import ExactGPModel
 from gaussian_process.GP import GP
@@ -48,18 +48,19 @@ class BaseRunner(ABC):
         self.topk_checkpoints = {}  # Top K checkpoints
 
         # set log and save destination
-        self.config.result = argparse.Namespace()
+        
+        self.result = argparse.Namespace()
         if self.config.args.train:
-            self.config.result.ckpt_path = make_save_dirs(self.config.args,
+            self.result.ckpt_path = make_save_dirs(self.config.args,
                                                     prefix=self.config.task.name + f'/seed{self.config.args.seed}',
                                                     suffix=self.config.model.model_name,
                                                     with_time=False)
 
-            self.save_config()  # save configuration file
+            #self.save_config()  # save configuration file
             
         # initialize model
         self.net, self.optimizer, self.scheduler = self.initialize_model_optimizer_scheduler(self.config)
-
+        
 
         # initialize EMA
         self.use_ema = False if not self.config.model.__contains__('EMA') else self.config.model.EMA.use_ema
@@ -73,7 +74,7 @@ class BaseRunner(ABC):
         self.load_model_from_checkpoint()
 
         # initialize DDP
-        self.net = self.net.to(self.config.training.device[0])
+        self.net = self.net.to("cuda")
 
         # get offline data from design-bench
         
@@ -102,12 +103,11 @@ class BaseRunner(ABC):
             p.requires_grad = False
         for p in self.shared.parameters():
             p.requires_grad = False
-        for p in self._emb_metadata.parameters():
-            p.requires_grad = False
+        
     
 
    
-
+    
     def get_offline_feature_z(self):
         # frozen encoder-decoder
         self.frozen_encoder_decoder()
@@ -175,7 +175,8 @@ class BaseRunner(ABC):
 
     # save configuration file
     def save_config(self):
-        save_path = os.path.join(self.config.result.ckpt_path, 'config.yaml')
+        save_path = os.path.join(self.result.ckpt_path, 'config.yaml')
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
         save_config = self.config
         with open(save_path, 'w') as f:
             yaml.dump(save_config, f)
@@ -522,15 +523,15 @@ class BaseRunner(ABC):
 
                                     print(f"saving top checkpoint: average_loss={average_loss} epoch={epoch + 1}")
                                     torch.save(model_states,
-                                            os.path.join(self.config.result.ckpt_path, model_ckpt_name))
+                                            os.path.join(self.result.ckpt_path, model_ckpt_name))
                                     torch.save(optimizer_scheduler_states,
-                                            os.path.join(self.config.result.ckpt_path, optim_sche_ckpt_name))
+                                            os.path.join(self.result.ckpt_path, optim_sche_ckpt_name))
                                 else:
                                     if average_loss < self.topk_checkpoints[top_key]["loss"]:
                                         print("remove " + self.topk_checkpoints[top_key]["model_ckpt_name"])
-                                        remove_file(os.path.join(self.config.result.ckpt_path,
+                                        remove_file(os.path.join(self.result.ckpt_path,
                                                                 self.topk_checkpoints[top_key]['model_ckpt_name']))
-                                        remove_file(os.path.join(self.config.result.ckpt_path,
+                                        remove_file(os.path.join(self.result.ckpt_path,
                                                                 self.topk_checkpoints[top_key]['optim_sche_ckpt_name']))
 
                                         print(
@@ -541,11 +542,11 @@ class BaseRunner(ABC):
                                                                         'optim_sche_ckpt_name': optim_sche_ckpt_name}
 
                                         torch.save(model_states,
-                                                os.path.join(self.config.result.ckpt_path, model_ckpt_name))
+                                                os.path.join(self.result.ckpt_path, model_ckpt_name))
                                         torch.save(optimizer_scheduler_states,
-                                                os.path.join(self.config.result.ckpt_path, optim_sche_ckpt_name))
+                                                os.path.join(self.result.ckpt_path, optim_sche_ckpt_name))
                                 if epoch + 1 == self.config.training.n_epochs:
-                                    return os.path.join(self.config.result.ckpt_path, self.topk_checkpoints[top_key]['model_ckpt_name']), os.path.join(self.config.result.ckpt_path, self.topk_checkpoints[top_key]['optim_sche_ckpt_name'])
+                                    return os.path.join(self.result.ckpt_path, self.topk_checkpoints[top_key]['model_ckpt_name']), os.path.join(self.result.ckpt_path, self.topk_checkpoints[top_key]['optim_sche_ckpt_name'])
                                                 
         except BaseException as e:
             print('str(Exception):\t', str(Exception))

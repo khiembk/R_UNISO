@@ -135,7 +135,13 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
                     new_state_dict[new_key] = v
                 model.load_state_dict(new_state_dict)
 
-        task_names, tasks = get_tasks_from_suites(cfg.test_suites, root_dir)
+        #task_names, tasks = get_tasks_from_suites(cfg.test_suites, root_dir)
+        # config for testing
+        task_names = []
+        task_names.append("TFBind8-Exact-v0")
+        tasks = get_tasks(task_names,root_dir)
+        
+        
         score_dict = {}
 
         csv_dir = root_dir / "camera_csv_results"
@@ -144,8 +150,11 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
             log.info(f"Instantiating searcher <{cfg.searcher._target_}>")
             with open(f"./data/{task_name}.metadata", "r") as f:
                 m = f.read()
-            searcher: BaseRunner = hydra.utils.instantiate(
-                cfg.searcher,
+
+            BBDM_cfg = cfg.searcher
+            
+            searcher = BBDMRunner(
+                BBDM_cfg,
                 model = model,
                 datamodule = datamodule
             )

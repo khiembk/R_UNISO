@@ -6,16 +6,16 @@ from src.models.BrownianBridge.BrownianBridgeModel import BrownianBridgeModel
 from src.searcher.diffusion_bridge.diff_utils import weights_init, get_optimizer
 from src.searcher.diffusion_bridge.base_runner import BaseRunner
 from tqdm.autonotebook import tqdm
-
-
+from src.models import EncoderDecoderModule
+from src.data.omnipred_datamodule import OmnipredDataModule
 
 class BBDMRunner(BaseRunner):
-    def __init__(self, config):
-        super().__init__(config)
+    def __init__(self, config, model:EncoderDecoderModule, datamodule:OmnipredDataModule):
+        super().__init__(config , model, datamodule)
 
     def initialize_model(self, config):
         if config.model.model_type == "BBDM":
-            bbdmnet = BrownianBridgeModel(config.model).to(config.training.device[0])
+            bbdmnet = BrownianBridgeModel(config.model).to("cuda")
         else:
             raise NotImplementedError
         bbdmnet.apply(weights_init)
@@ -47,12 +47,22 @@ class BBDMRunner(BaseRunner):
         
     def initialize_optimizer_scheduler(self, net, config):
         optimizer = get_optimizer(config.model.BB.optimizer, net.get_parameters())
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
-                                                            mode='min',
-                                                            verbose=True,
-                                                            threshold_mode='rel',
-                                                            **vars(config.model.BB.lr_scheduler)
-)
+        # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
+        #                                                     mode='min',
+        #                                                     #verbose=True,
+        #                                                     threshold_mode='rel',
+        #                                                     **vars(config.model.BB.lr_scheduler))
+
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer=optimizer,
+                mode='min',
+                threshold_mode='rel',
+                cooldown=200,
+                factor=0.5,
+                min_lr=5.0e-07,
+                patience=200,
+                threshold=0.0001)
+
         return [optimizer], [scheduler]
 
     @torch.no_grad()

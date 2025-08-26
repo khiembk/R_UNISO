@@ -166,3 +166,4 @@ configs/local/default.yaml
 /.locks/
 
 /thirdparty_benchmark/
+/diff_results/

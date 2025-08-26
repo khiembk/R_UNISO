@@ -73,4 +73,10 @@ training:
   save_interval: 20
   val_frac: 0.1
   validation_interval: 20
+  device: "cuda"
+args:
+  train: True 
+  save_top: True 
+  seed: 42
+  result_path: "./diff_results"
 
