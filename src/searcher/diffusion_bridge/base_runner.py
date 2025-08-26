@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from tqdm.autonotebook import tqdm
 
 from searcher.diffusion_bridge.EMA import EMA
-from searcher.diffusion_bridge.diff_utils import make_save_dirs, remove_file, sampling_data_from_GP, create_train_dataloader, create_val_dataloader, sampling_from_offline_data, testing_by_oracle
+from searcher.diffusion_bridge.diff_utils import make_save_dirs, remove_file, sampling_data_from_GP, create_train_dataloader, create_val_dataloader, sampling_from_offline_data, testing_by_oracle, load_metadata_from_task_name
 import numpy as np
 
 import gpytorch 
@@ -24,6 +24,7 @@ from src.models import EncoderDecoderModule
 root_dir = rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True) 
 from src.tasks import get_tasks, get_tasks_from_suites
 from src.data.omnipred_datamodule import OmnipredDataModule
+#### Ignore the normalize
 class BaseRunner(ABC):
     def __init__(self, config, model:EncoderDecoderModule, datamodule:OmnipredDataModule):
         self.net = None  # Neural Network
@@ -86,13 +87,13 @@ class BaseRunner(ABC):
         ### 
         self.distinct_meta = list(set(self.meta_offline))
 
-        if self.config.task.normalize_z:
-            self.offline_z = (self.offline_z - self.mean_offline_z) / self.std_offline_z
-        if self.config.task.normalize_y:
-            self.offline_y = (self.offline_y - self.mean_offline_y) / self.std_offline_y
+        # if self.config.task.normalize_z:
+        #     self.offline_z = (self.offline_z - self.mean_offline_z) / self.std_offline_z
+        # if self.config.task.normalize_y:
+        #     self.offline_y = (self.offline_y - self.mean_offline_y) / self.std_offline_y
     
-        self.offline_z = self.offline_z.to(self.config.training.device[0])
-        self.offline_y = self.offline_y.to(self.config.training.device[0])
+        # self.offline_z = self.offline_z.to(self.config.training.device[0])
+        # self.offline_y = self.offline_y.to(self.config.training.device[0])
     
     def frozen_encoder_decoder(self):
         ### frozen encoder-decoder
@@ -407,6 +408,7 @@ class BaseRunner(ABC):
                 for metadata in self.distinct_meta:
                     start_time = time.time()
                     self.offline_z_m, self.offline_y_m = self.load_feature_by_metadata(metadata = metadata)
+                    
                     if self.config.GP.type_of_initial_points == 'highest':
                         best_indices = torch.argsort(self.offline_y_m)[-1024:]
                         self.best_z_m = self.offline_z_m[best_indices]
@@ -559,9 +561,12 @@ class BaseRunner(ABC):
 
     @torch.no_grad()
     def test(self, task):
+        metadata = load_metadata_from_task_name(task)
+        m_embeddings = self._emb_metadata(metadata)
+        self.offline_z_m, self.offline_y_m = self.load_feature_by_metadata(metadata= m_embeddings)
         
-        low_candidates, low_scores = sampling_from_offline_data(x=self.offline_x,
-                                                                y=self.offline_y,
+        low_candidates, low_scores = sampling_from_offline_data(x=self.offline_z_m,
+                                                                y=self.offline_y_m,
                                                                 n_candidates=self.config.testing.num_candidates, 
                                                                 type=self.config.testing.type_sampling,
                                                                 percentile_sampling=self.config.testing.percentile_sampling,

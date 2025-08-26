@@ -167,3 +167,11 @@ def testing_by_oracle(task_name, high_candidates):
     return score
 ### Testing 128 found designs by the oracle
 
+def load_metadata_from_task_name(task_name, data_dir= "data/"):
+    
+    metadata_file = f"{data_dir}/{task_name}.metadata"
+    with open(metadata_file, "r") as f:
+        metadata = f.read()
+    
+    return str(metadata)
+
