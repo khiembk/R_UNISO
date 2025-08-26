@@ -30,7 +30,8 @@ root_dir = rootutils.setup_root(__file__, indicator=".project-root", pythonpath=
 # ------------------------------------------------------------------------------------ #
 
 from src.searcher.base import BaseSearcher
-from src.searcher.diffusion_bridge import BaseRunner, BBDMRunner
+from src.searcher.diffusion_bridge.base_runner import BaseRunner
+from src.searcher.diffusion_bridge.BBDMRunner import BBDMRunner
 from src.tasks import get_tasks, get_tasks_from_suites
 from src.tasks.base import OfflineBBOTask
 from src.utils import (

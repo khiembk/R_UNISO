@@ -7,10 +7,10 @@ from functools import partial
 from tqdm.autonotebook import tqdm
 import numpy as np
 
-from model.utils import extract, default
+from models.utils import extract, default
 # from model.BrownianBridge.base.modules.diffusionmodules.openaimodel import UNetModel
-from model.BrownianBridge.base.modules.encoders.modules import SpatialRescaler
-from model.BrownianBridge.base.modules.ours.mlp import MLP
+from models.BrownianBridge.base.modules.encoders.modules import SpatialRescaler
+from models.BrownianBridge.base.modules.ours.mlp import MLP
 # from model.BrownianBridge.base.modules.ours.unet import UNET_1D
 
 class BrownianBridgeModel(nn.Module):

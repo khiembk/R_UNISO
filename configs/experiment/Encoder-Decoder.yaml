@@ -10,7 +10,7 @@ defaults:
   - override /trainer: default
   - override /logger: wandb
   - override /task: design_bench
-  - override /searcher: ga
+  - override /searcher: diff
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters

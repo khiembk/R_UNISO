@@ -20,7 +20,7 @@ from gaussian_process.GPlib import ExactGPModel
 from gaussian_process.GP import GP
 import design_bench
 from src.models import EncoderDecoderModule
-
+import rootutils
 root_dir = rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True) 
 from src.tasks import get_tasks, get_tasks_from_suites
 from src.data.omnipred_datamodule import OmnipredDataModule
@@ -41,7 +41,6 @@ class BaseRunner(ABC):
         self.decoder_model = model.rec_model  
         self.input_tokenizer = model.input_tokenizer
         self.shared = model.shared
-        self.projection_head = model.projection_head
         self._emb_metadata = model._emb_metadata
         self.frozen_encoder_decoder()
         # orginal code
@@ -103,8 +102,6 @@ class BaseRunner(ABC):
             p.requires_grad = False
         for p in self.shared.parameters():
             p.requires_grad = False
-        for p in self.projection_head.parameters():
-            p.requires_grad = False
         for p in self._emb_metadata.parameters():
             p.requires_grad = False
     
@@ -126,8 +123,7 @@ class BaseRunner(ABC):
                 inputs_embeds=input_embeds, attention_mask= batch["attention_mask"])
                 encoder_hidden_states = encoder_outputs.last_hidden_state
                 mean_pooled = self._mean_pooling(encoder_hidden_states, batch["attention_mask"])
-                projected_embeddings = self.projection_head(mean_pooled)
-                z_offline.append(projected_embeddings)
+                z_offline.append(mean_pooled)
                 y_offline.append(batch["labels"])
                 m_embeddings = self._emb_metadata(batch["metadata"])
                 meta_offline.append(m_embeddings)

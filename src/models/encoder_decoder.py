@@ -205,7 +205,7 @@ class EncoderDecoderModule(LightningModule):
         mean_pooled = self._mean_pooling(encoder_hidden_states, attention_mask)
         projected_embeddings = self.projection_head(mean_pooled)
         # Reconstruction from projected embeddings
-        recon_outputs = self.rec_model(projected_embeddings)
+        recon_outputs = self.rec_model(mean_pooled)
         rec_loss = self.rec_loss(input_ids, recon_outputs) if input_ids is not None else None
 
 
