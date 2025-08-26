@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from tqdm.autonotebook import tqdm
 
 from searcher.diffusion_bridge.EMA import EMA
-from searcher.diffusion_bridge.diff_utils import make_save_dirs, remove_file, sampling_data_from_GP, create_train_dataloader, create_val_dataloader, sampling_from_offline_data, testing_by_oracle, load_metadata_from_task_name
+from searcher.diffusion_bridge.diff_utils import make_save_dirs, remove_file, sampling_data_from_GP, create_train_dataloader, create_val_dataloader, sampling_from_offline_data, testing_by_oracle, load_metadata_from_task_name, compute_mean_std_tensor
 import numpy as np
 import omegaconf
 import gpytorch 
@@ -79,11 +79,7 @@ class BaseRunner(ABC):
         # get offline data from design-bench
         
         self.offline_z, self.offline_y, self.metadata = self.get_offline_feature_z()
-        self.mean_offline_z = np.mean(self.offline_z)
-        self.std_offline_z = np.std(self.offline_z)
-        ###
-        self.mean_offline_y = np.mean(self.offline_y)
-        self.std_offline_y = np.std(self.offline_y)
+        
         ### 
         self.distinct_meta = list(set(self.meta_offline))
 
@@ -401,7 +397,7 @@ class BaseRunner(ABC):
             
             accumulate_grad_batches = self.config.training.accumulate_grad_batches 
             for epoch in range(start_epoch, self.config.training.n_epochs):
-                
+                print("Start at ep: ", epoch)
                 for metadata in self.distinct_meta:
                     start_time = time.time()
                     self.offline_z_m, self.offline_y_m = self.load_feature_by_metadata(metadata = metadata)
@@ -603,8 +599,9 @@ class BaseRunner(ABC):
     def run(self, task_instance, task_name, metadata):
         m_embeddings = self._emb_metadata(metadata)
         self.offline_z_m, self.offline_y_m = self.load_feature_by_metadata(metadata= m_embeddings)
-        mean_offline_y = np.mean(self.offline_y_m)
-        std_offline_y = np.std(self.offline_y_m)
+        
+        mean_offline_y, std_offline_y  = compute_mean_std_tensor(self.offline_y_m)
+        
 
         low_candidates, low_scores = sampling_from_offline_data(x=self.offline_z_m,
                                                                 y=self.offline_y_m,

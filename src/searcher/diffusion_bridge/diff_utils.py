@@ -175,3 +175,22 @@ def load_metadata_from_task_name(task_name, data_dir= "data/"):
     
     return str(metadata)
 
+def compute_mean_std_tensor(y):
+    """
+    Compute the mean and standard deviation of a list of PyTorch tensors.
+    
+    Args:
+        y (list): List of PyTorch tensors (scalars or tensors of consistent shape).
+    
+    Returns:
+        tuple: (mean, std) as PyTorch tensors.
+    """
+    # Stack all tensors into a single tensor
+    y_tensor = torch.stack([torch.flatten(y_i) for y_i in y])  # Flatten each tensor
+    y_tensor = y_tensor.view(-1)  # Flatten to 1D for scalar or vector inputs
+    
+    # Compute mean and standard deviation
+    mean = torch.mean(y_tensor.float())  # Convert to float for mean/std
+    std = torch.std(y_tensor.float(), unbiased=True)  # Use unbiased std (Bessel's correction)
+    
+    return mean, std
