@@ -81,7 +81,7 @@ class BaseRunner(ABC):
         self.offline_z, self.offline_y, self.metadata = self.get_offline_feature_z()
         
         ### 
-        self.distinct_meta = list(set(self.metadata))
+        self.distinct_meta = self.get_distinct_meta()
 
         # if self.config.task.normalize_z:
         #     self.offline_z = (self.offline_z - self.mean_offline_z) / self.std_offline_z
@@ -103,16 +103,18 @@ class BaseRunner(ABC):
     
 
    
-    
+    @torch.no_grad()
     def get_offline_feature_z(self):
         # frozen encoder-decoder
         self.frozen_encoder_decoder()
+        print("Begin: extract feature...")
         #### get initial train loader 
         train_dataloader = self.datamodule.train_dataloader()
+        pbar = tqdm(train_dataloader, total=len(train_dataloader), smoothing=0.01, disable=False)
         z_offline = []
         y_offline = []
         meta_offline = []
-        for batch in train_dataloader:
+        for batch in pbar:
             with torch.no_grad():
                 input_embeds = self.shared(batch["input_ids"])
                 encoder_outputs = self.encoder_model(
@@ -130,7 +132,7 @@ class BaseRunner(ABC):
         z_offline= []
         y_offline = []
         for i in range(len(self.offline_z)):
-            if self.metadata[i] == metadata_val: 
+            if torch.equal(self.metadata[i], metadata_val): 
                 z_offline.append(self.offline_z[i])
                 y_offline.append(self.offline_y[i])
 
@@ -380,17 +382,31 @@ class BaseRunner(ABC):
         :return:
         """
         pass
+    def get_distinct_meta(self):
+        """
+    Get unique metadata values from self.metadata.
+    
+    Returns:
+        list: List of unique metadata tensors.
+        """
+        seen = []
+        for meta in self.metadata:
+        # Check if meta is already in seen using torch.equal
+            if not any(torch.equal(meta, s) for s in seen):
+               seen.append(meta)
+        
+        return seen
 
     def train(self):
         
-        start_epoch = self.global_epoch
+            start_epoch = self.global_epoch
         
-        try:
+        # try:
             # initialize params for GP
-            lengthscale = torch.tensor(self.config.GP.initial_lengthscale, device=self.config.training.device[0])
-            variance = torch.tensor(self.config.GP.initial_outputscale, device=self.config.training.device[0])
-            noise = torch.tensor(self.config.GP.noise, device=self.config.training.device[0])
-            mean_prior = torch.tensor(0.0, device = self.config.training.device[0]) 
+            lengthscale = torch.tensor(self.config.GP.initial_lengthscale, device="cuda")
+            variance = torch.tensor(self.config.GP.initial_outputscale, device="cuda")
+            noise = torch.tensor(self.config.GP.noise, device="cuda")
+            mean_prior = torch.tensor(0.0, device = "cuda") 
             
             val_loader = None
             val_dataset = []
@@ -400,7 +416,7 @@ class BaseRunner(ABC):
                 print("Start at ep: ", epoch)
                 for metadata in self.distinct_meta:
                     start_time = time.time()
-                    self.offline_z_m, self.offline_y_m = self.load_feature_by_metadata(metadata = metadata)
+                    self.offline_z_m, self.offline_y_m = self.load_feature_by_metadata(metadata_val = metadata)
                     
                     if self.config.GP.type_of_initial_points == 'highest':
                         best_indices = torch.argsort(self.offline_y_m)[-1024:]
@@ -411,7 +427,7 @@ class BaseRunner(ABC):
                     else : 
                         self.best_z_m =  self.offline_z_m
                     ### init GP model
-                    GP_Model = GP(device=self.config.training.device[0],
+                    GP_Model = GP(device= "cuda",
                                 x_train= self.offline_z_m,
                                 y_train= self.offline_y_m, 
                                 lengthscale=lengthscale, 
@@ -420,7 +436,7 @@ class BaseRunner(ABC):
                                 mean_prior=mean_prior)
                     ### generate data from GP
                     data_from_GP = sampling_data_from_GP(x_train=self.best_z_m,
-                                                    device=self.config.training.device[0],
+                                                    device= "cuda",
                                                     GP_Model=GP_Model,
                                                     num_functions=self.config.GP.num_functions,
                                                     num_gradient_steps=self.config.GP.num_gradient_steps,
@@ -544,19 +560,19 @@ class BaseRunner(ABC):
                                 if epoch + 1 == self.config.training.n_epochs:
                                     return os.path.join(self.result.ckpt_path, self.topk_checkpoints[top_key]['model_ckpt_name']), os.path.join(self.result.ckpt_path, self.topk_checkpoints[top_key]['optim_sche_ckpt_name'])
                                                 
-        except BaseException as e:
-            print('str(Exception):\t', str(Exception))
-            print('str(e):\t\t', str(e))
-            print('repr(e):\t', repr(e))
-            print('traceback.print_exc():')
-            traceback.print_exc()
-            print('traceback.format_exc():\n%s' % traceback.format_exc())
+        # except BaseException as e:
+        #     print('str(Exception):\t', str(Exception))
+        #     print('str(e):\t\t', str(e))
+        #     print('repr(e):\t', repr(e))
+        #     print('traceback.print_exc():')
+        #     traceback.print_exc()
+        #     print('traceback.format_exc():\n%s' % traceback.format_exc())
 
     @torch.no_grad()
     def test(self, task):
         metadata = load_metadata_from_task_name(task)
         m_embeddings = self._emb_metadata(metadata)
-        self.offline_z_m, self.offline_y_m = self.load_feature_by_metadata(metadata= m_embeddings)
+        self.offline_z_m, self.offline_y_m = self.load_feature_by_metadata(metadata_val= m_embeddings)
         
         low_candidates, low_scores = sampling_from_offline_data(x=self.offline_z_m,
                                                                 y=self.offline_y_m,
@@ -594,14 +610,36 @@ class BaseRunner(ABC):
         # percentiles = torch.quantile(final_score, torch.tensor([1.0, 0.8, 0.5]), interpolation='higher') 
         
         # return percentiles[0].item(), percentiles[1].item(), percentiles[2].item()
-    
     @torch.no_grad()
-    def run(self, task_instance, task_name, metadata_tokens):
-        m_embeddings = self._emb_metadata(metadata_tokens)
-        self.offline_z_m, self.offline_y_m = self.load_feature_by_metadata(metadata= m_embeddings)
+    def infer_feature_with_metadata(self, task_name, task_instance, metadata_string):
+        x_np = task_instance.x_np
+        if len(x_np.shape) == 1:
+            x_np = x_np.reshape(1, -1)
+        batch_size, n_var = x_np.shape
+        ms = tuple([metadata_string for _ in range(batch_size)])
+        def sol2str(single_solution):
+            res_str = ", ".join(
+            f"x{i}: {val.item():.4f}" if not task_name.startswith('TFBind') else f"x{i}: '{int(val.item())}'" for i, val in enumerate(single_solution))
+            return res_str
+
+        x_str = [sol2str(x0) for x0 in x_np]
+        input_str = [f"{m0}. {x0}" for x0, m0 in zip(x_str, ms)]
+        input_tokens = self.input_tokenizer(input_str, padding="max_length", truncation=True, return_tensors="pt")
+        input_embeds = self.shared(input_tokens["input_ids"])
+        encoder_outputs = self.encoder_model(
+            inputs_embeds=input_embeds, attention_mask= input_tokens["attention_mask"]
+        ).last_hidden_state
+        mean_pooled = self._mean_pooling(encoder_outputs, input_tokens["attention_mask"])
+        return mean_pooled
+         
+    @torch.no_grad()
+    def run(self, task_instance, task_name, metadata_string):
+        self.offline_y_m = task_instance.y_np 
+        self.offline_z_m = self.infer_feature_with_metadata(task_name= task_name,task_instance = task_instance, metadata_string = metadata_string)
         
-        mean_offline_y, std_offline_y  = compute_mean_std_tensor(self.offline_y_m)
-        
+        mean_offline_y = np.mean(self.offline_y_m)
+        std_offline_y = np.std(self.offline_y_m)
+
 
         low_candidates, low_scores = sampling_from_offline_data(x=self.offline_z_m,
                                                                 y=self.offline_y_m,

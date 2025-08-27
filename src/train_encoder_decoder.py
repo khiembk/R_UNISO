@@ -163,7 +163,7 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
             searcher.train() 
             #### infer high design
             print("infer high design...")
-            x_res = searcher.run(task_instance = task_instance, task_name = task_name, metadata = m)
+            x_res = searcher.run(task_instance = task_instance, task_name = task_name, metadata_string = m)
             tmp_dict = task_instance.evaluate(x_res, return_normalized_y=True)
             res_dict = {}
             for k, v in tmp_dict.items():
