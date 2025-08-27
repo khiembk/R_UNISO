@@ -81,7 +81,7 @@ class BaseRunner(ABC):
         self.offline_z, self.offline_y, self.metadata = self.get_offline_feature_z()
         
         ### 
-        self.distinct_meta = list(set(self.meta_offline))
+        self.distinct_meta = list(set(self.metadata))
 
         # if self.config.task.normalize_z:
         #     self.offline_z = (self.offline_z - self.mean_offline_z) / self.std_offline_z
@@ -596,8 +596,8 @@ class BaseRunner(ABC):
         # return percentiles[0].item(), percentiles[1].item(), percentiles[2].item()
     
     @torch.no_grad()
-    def run(self, task_instance, task_name, metadata):
-        m_embeddings = self._emb_metadata(metadata)
+    def run(self, task_instance, task_name, metadata_tokens):
+        m_embeddings = self._emb_metadata(metadata_tokens)
         self.offline_z_m, self.offline_y_m = self.load_feature_by_metadata(metadata= m_embeddings)
         
         mean_offline_y, std_offline_y  = compute_mean_std_tensor(self.offline_y_m)
