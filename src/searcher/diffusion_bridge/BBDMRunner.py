@@ -78,7 +78,7 @@ class BBDMRunner(BaseRunner):
     #### Compute loss function
     def loss_fn(self, net, batch, epoch, step, opt_idx=0, stage='train', write=True):
         (x_high, y_high), (x_low, y_low) = batch
-        
+        self.config.training.device[0] = "cuda"
         torch.manual_seed(step)
         rand_mask = torch.rand(y_high.size())
         mask = (rand_mask <= self.config.training.classifier_free_guidance_prob)

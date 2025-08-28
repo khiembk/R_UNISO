@@ -78,8 +78,8 @@ class BaseRunner(ABC):
 
         # get offline data from design-bench
         
-        self.offline_z, self.offline_y, self.metadata = self.get_offline_feature_z()
-        
+        #self.offline_x, self.offline_z, self.offline_y, self.metadata = self.get_offline_feature_z()
+        self.get_data_label()
         ### 
         self.distinct_meta = self.get_distinct_meta()
 
@@ -102,7 +102,78 @@ class BaseRunner(ABC):
         
     
 
-   
+    
+    def generate_data_with_GP(self, metadata, lengthscale, variance, noise, mean_prior, epoch=0, num_points = 10):
+        self.offline_x_m, self.offline_y_m = self.load_xy_by_metadata(metadata)
+        #print("offline y: ",self.offline_y_m)    
+        print("offline x: ",self.offline_x_m)          
+        if self.config.GP.type_of_initial_points == 'highest':
+            best_indices = torch.argsort(torch.tensor(self.offline_y_m))[ -num_points:]
+            # print("best indicate:", best_indices)
+            self.best_x_m = [self.offline_x_m[i] for i in best_indices]
+        else: 
+            best_indices = torch.argsort(torch.tensor(self.offline_y_m))[: num_points]
+            # print("best indicate:", best_indices)            
+            self.best_x_m = [self.offline_x_m[i] for i in best_indices]
+        
+        #### init data
+        x_m_2d = torch.stack(self.offline_x_m)
+        x_m_2d = x_m_2d.to(dtype=torch.float32, device="cuda")
+        x_m_2d_best = torch.stack(self.best_x_m)
+        x_m_2d_best = x_m_2d_best.to(dtype=torch.float32, device="cuda")
+                    ### init GP model
+        GP_Model = GP(device= "cuda",
+                                x_train= x_m_2d,
+                                y_train= torch.tensor(self.offline_y_m).to(device="cuda"), 
+                                lengthscale=lengthscale, 
+                                variance=variance, 
+                                noise=noise, 
+                                mean_prior=mean_prior)
+                    ### generate data from GP
+        data_from_GP = sampling_data_from_GP(x_train= x_m_2d_best,
+                                                    device= "cuda",
+                                                    GP_Model=GP_Model,
+                                                    num_functions=self.config.GP.num_functions,
+                                                    num_gradient_steps=self.config.GP.num_gradient_steps,
+                                                    num_points= num_points,
+                                                    learning_rate=self.config.GP.sampling_from_GP_lr,
+                                                    delta_lengthscale=self.config.GP.delta_lengthscale,
+                                                    delta_variance=self.config.GP.delta_variance,
+                                                    seed=epoch,
+                                                    threshold_diff=self.config.GP.threshold_diff)
+        
+        return data_from_GP
+
+
+
+    @torch.no_grad()
+    def get_data_label(self):
+        print("Begin: load the data...")
+        #### get initial train loader 
+        train_dataloader = self.datamodule.train_dataloader()
+        pbar = tqdm(train_dataloader, total=len(train_dataloader), smoothing=0.01, disable=False)
+        x_offline = []
+        y_offline = []
+        batch_count = 0
+        max_batches = 50
+        meta_offline = []
+        for batch in pbar:
+            with torch.no_grad():
+                y_offline.append(batch["ori_y"])
+                m_embeddings = self._emb_metadata(batch["metadata"])
+                meta_offline.append(m_embeddings)
+                x_offline.append(batch["ori_x"])
+            
+            batch_count += 1
+            if batch_count >= max_batches:
+                pbar.close()  # Properly close the progress bar
+                break
+            
+        
+        self.x_offline = x_offline
+        self.y_offline = y_offline
+        self.metadata =  meta_offline
+
     @torch.no_grad()
     def get_offline_feature_z(self):
         # frozen encoder-decoder
@@ -111,9 +182,11 @@ class BaseRunner(ABC):
         #### get initial train loader 
         train_dataloader = self.datamodule.train_dataloader()
         pbar = tqdm(train_dataloader, total=len(train_dataloader), smoothing=0.01, disable=False)
+        batch_count = 0
+        max_batches = 50
+       
         z_offline = []
-        y_offline = []
-        meta_offline = []
+    
         for batch in pbar:
             with torch.no_grad():
                 input_embeds = self.shared(batch["input_ids"])
@@ -122,11 +195,21 @@ class BaseRunner(ABC):
                 encoder_hidden_states = encoder_outputs.last_hidden_state
                 mean_pooled = self._mean_pooling(encoder_hidden_states, batch["attention_mask"])
                 z_offline.append(mean_pooled)
-                y_offline.append(batch["labels"])
-                m_embeddings = self._emb_metadata(batch["metadata"])
-                meta_offline.append(m_embeddings)
-        
-        return z_offline, y_offline, meta_offline
+            batch_count += 1
+            if batch_count >= max_batches:
+                pbar.close()  # Properly close the progress bar
+                break
+        return  z_offline
+    
+    @torch.no_grad()
+    def get_offline_feature_z_from_x(self):
+        # frozen encoder-decoder
+        self.frozen_encoder_decoder()
+        print("Begin: extract feature from generated data")
+        #### get initial train loader 
+        pass
+
+    
 
     def load_feature_by_metadata(self, metadata_val):
         z_offline= []
@@ -137,6 +220,16 @@ class BaseRunner(ABC):
                 y_offline.append(self.offline_y[i])
 
         return z_offline, y_offline
+
+    def load_xy_by_metadata(self, metadata_val):
+        x_offline= []
+        y_offline = []
+        for i in range(len(self.x_offline)):
+            if torch.equal(self.metadata[i], metadata_val): 
+                x_offline.append(self.x_offline[i][0])
+                y_offline.append(float(self.y_offline[i][0]))
+
+        return x_offline, y_offline
         
     def _mean_pooling(self, token_embeddings: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
@@ -414,39 +507,13 @@ class BaseRunner(ABC):
             accumulate_grad_batches = self.config.training.accumulate_grad_batches 
             for epoch in range(start_epoch, self.config.training.n_epochs):
                 print("Start at ep: ", epoch)
+                start_time = time.time()
                 for metadata in self.distinct_meta:
-                    start_time = time.time()
-                    self.offline_z_m, self.offline_y_m = self.load_feature_by_metadata(metadata_val = metadata)
+                
+                    data_from_GP = self.generate_data_with_GP(metadata= metadata, lengthscale = lengthscale, variance = variance, noise = noise, mean_prior = mean_prior)
                     
-                    if self.config.GP.type_of_initial_points == 'highest':
-                        best_indices = torch.argsort(self.offline_y_m)[-1024:]
-                        self.best_z_m = self.offline_z_m[best_indices]
-                    elif self.config.GP.type_of_initial_points == 'lowest': 
-                        best_indices = torch.argsort(self.offline_y_m)[:1024]
-                        self.best_z_m = offline_z_m[best_indices]
-                    else : 
-                        self.best_z_m =  self.offline_z_m
-                    ### init GP model
-                    GP_Model = GP(device= "cuda",
-                                x_train= self.offline_z_m,
-                                y_train= self.offline_y_m, 
-                                lengthscale=lengthscale, 
-                                variance=variance, 
-                                noise=noise, 
-                                mean_prior=mean_prior)
-                    ### generate data from GP
-                    data_from_GP = sampling_data_from_GP(x_train=self.best_z_m,
-                                                    device= "cuda",
-                                                    GP_Model=GP_Model,
-                                                    num_functions=self.config.GP.num_functions,
-                                                    num_gradient_steps=self.config.GP.num_gradient_steps,
-                                                    num_points=self.config.GP.num_points,
-                                                    learning_rate=self.config.GP.sampling_from_GP_lr,
-                                                    delta_lengthscale=self.config.GP.delta_lengthscale,
-                                                    delta_variance=self.config.GP.delta_variance,
-                                                    seed=epoch,
-                                                    threshold_diff=self.config.GP.threshold_diff)
-
+                    
+                    
                     train_loader, current_epoch_val_dataset = create_train_dataloader(data_from_GP=data_from_GP,
                                                         val_frac=self.config.training.val_frac,
                                                         batch_size=self.config.training.batch_size,

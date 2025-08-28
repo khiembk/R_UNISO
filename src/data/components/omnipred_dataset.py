@@ -1,7 +1,8 @@
 from typing import Any, List, Optional
-
+import numpy as np
 import torch 
 from torch.utils.data import Dataset
+import re
 
 from src.data.data_utils import normalize_ys_from_different_tasks
 
@@ -19,6 +20,7 @@ class OmnipredDataset(Dataset):
         metadata_exclude_items: Optional[int] = None,
         max_length: int = 128,
     ) -> None:
+        self.x_not_concat = x_data
         self.x_data = x_data
         self.y_data = y_data
         self.values = normalize_ys_from_different_tasks(y_data, task_names_list)
@@ -54,6 +56,7 @@ class OmnipredDataset(Dataset):
     def __getitem__(self, idx: int):
         x = str(self.x_data[idx])
         y = str(self.y_data[idx])
+        x_not_concat = str(self.x_not_concat[idx])
         value = self.values[idx]
 
         # Encode input sequence
@@ -106,6 +109,8 @@ class OmnipredDataset(Dataset):
             "task_name": self.task_names_list[idx],
             "metadata": metadata_tokens,
             "value": value.squeeze(),
+            "ori_y": y,
+            "ori_x": self.recover_data_from_to_string_single(x_not_concat),
         }
 
     def _shift_right(self, input_ids, pad_token_id, decoder_start_token_id):
@@ -118,3 +123,22 @@ class OmnipredDataset(Dataset):
         shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
 
         return shifted_input_ids
+
+
+    def recover_data_from_to_string_single(self,string_data: str) -> np.ndarray:
+
+        #print("input: ", string_data) 
+        values = re.findall(r"x\d+:\s*['\"]?(\d+)['\"]?", string_data)
+     
+        recovered_data = []
+        for value in values:
+            try:
+            # If it has a decimal point and isn't an integer-like (e.g., '3.0'), convert to float
+                if '.' in value and float(value) != int(float(value)):
+                   recovered_data.append(float(value))
+                else:
+                    recovered_data.append(int(float(value)))  # Convert to int if no decimal part
+            except ValueError:
+                recovered_data.append(0)
+        #print("output: ",recovered_data)
+        return np.array(recovered_data)

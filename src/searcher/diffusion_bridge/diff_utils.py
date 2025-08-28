@@ -57,8 +57,7 @@ def sampling_data_from_GP(x_train, device, GP_Model, num_gradient_steps = 50, nu
     torch.manual_seed(seed=seed)
     datasets={}
     learning_rate_vec = torch.cat((-learning_rate*torch.ones(num_points, x_train.shape[1], device=device), learning_rate*torch.ones(num_points, x_train.shape[1], device = device)))
-
-
+    
     for iter in range(num_functions):
         datasets[f'f{iter}']=[]
         
@@ -76,6 +75,9 @@ def sampling_data_from_GP(x_train, device, GP_Model, num_gradient_steps = 50, nu
         for t in range(num_gradient_steps): 
             mu_star = GP_Model.mean_posterior(joint_x)
             grad = torch.autograd.grad(mu_star.sum(),joint_x)[0]
+            # print("shape grad: ", grad.shape)
+            # print("shape learning reate: ", learning_rate_vec.shape)
+            # print("shape of joint x: ", joint_x.shape)
             joint_x += learning_rate_vec*grad 
 
         
