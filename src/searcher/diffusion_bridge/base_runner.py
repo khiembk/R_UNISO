@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from tqdm.autonotebook import tqdm
 
 from searcher.diffusion_bridge.EMA import EMA
-from searcher.diffusion_bridge.diff_utils import make_save_dirs, remove_file, sampling_data_from_GP, create_train_dataloader, create_val_dataloader, sampling_from_offline_data, testing_by_oracle, load_metadata_from_task_name, compute_mean_std_tensor
+from searcher.diffusion_bridge.diff_utils import make_save_dirs, remove_file, sampling_data_from_GP, create_train_dataloader, create_val_dataloader, sampling_from_offline_data, testing_by_oracle, load_metadata_from_task_name, compute_mean_std_tensor, transfor_x2str
 import numpy as np
 import omegaconf
 import gpytorch 
@@ -79,7 +79,7 @@ class BaseRunner(ABC):
         # get offline data from design-bench
         
         #self.offline_x, self.offline_z, self.offline_y, self.metadata = self.get_offline_feature_z()
-        self.get_data_label()
+        self.get_data_label_xy()
         ### 
         self.distinct_meta = self.get_distinct_meta()
 
@@ -106,7 +106,7 @@ class BaseRunner(ABC):
     def generate_data_with_GP(self, metadata, lengthscale, variance, noise, mean_prior, epoch=0, num_points = 10):
         self.offline_x_m, self.offline_y_m = self.load_xy_by_metadata(metadata)
         #print("offline y: ",self.offline_y_m)    
-        print("offline x: ",self.offline_x_m)          
+        #print("offline x: ",self.offline_x_m)          
         if self.config.GP.type_of_initial_points == 'highest':
             best_indices = torch.argsort(torch.tensor(self.offline_y_m))[ -num_points:]
             # print("best indicate:", best_indices)
@@ -147,33 +147,35 @@ class BaseRunner(ABC):
 
 
     @torch.no_grad()
-    def get_data_label(self):
-        print("Begin: load the data...")
+    def get_data_label_xy(self):
+        print("Begin: load the data(x,y)...")
         #### get initial train loader 
         train_dataloader = self.datamodule.train_dataloader()
         pbar = tqdm(train_dataloader, total=len(train_dataloader), smoothing=0.01, disable=False)
         x_offline = []
         y_offline = []
+        task_names = []
         batch_count = 0
         max_batches = 50
         meta_offline = []
         for batch in pbar:
             with torch.no_grad():
+                task_names.append(batch["task_name"])
                 y_offline.append(batch["ori_y"])
                 m_embeddings = self._emb_metadata(batch["metadata"])
                 meta_offline.append(m_embeddings)
                 x_offline.append(batch["ori_x"])
-            
+                
             batch_count += 1
             if batch_count >= max_batches:
                 pbar.close()  # Properly close the progress bar
                 break
             
-        
+        self.task_names = task_names
         self.x_offline = x_offline
         self.y_offline = y_offline
         self.metadata =  meta_offline
-
+      
     @torch.no_grad()
     def get_offline_feature_z(self):
         # frozen encoder-decoder
@@ -202,12 +204,62 @@ class BaseRunner(ABC):
         return  z_offline
     
     @torch.no_grad()
-    def get_offline_feature_z_from_x(self):
+    def get_offline_feature_z_from_GP(self, datasets, name_task):
         # frozen encoder-decoder
         self.frozen_encoder_decoder()
-        print("Begin: extract feature from generated data")
+        print("Begin: extract feature from GP")
         #### get initial train loader 
-        pass
+        for key in datasets:
+            # z_offline[key] = []
+            samples = datasets[key]
+
+            for sample in samples:
+                (high_x, high_y), (low_x, low_y) = sample
+                transfor_x2str(high_x, name_task)
+                # Ensure x tensors are on the correct device and have proper shape
+#                 high_x = high_x.to(device)
+#                 low_x = low_x.to(device)
+#                 # Create attention masks (1 for non-padding, 0 for padding)
+#                 # Assuming padding token ID is 0 (common in transformers)
+#                 high_attention_mask = (high_x != 0).long()
+#                 low_attention_mask = (low_x != 0).long()
+
+#                 # Pad or truncate to max_length
+#                 if high_x.size(0) < max_length:
+#                     high_x = torch.nn.functional.pad(high_x, (0, max_length - high_x.size(0)), value=0)
+#                     high_attention_mask = torch.nn.functional.pad(high_attention_mask, (0, max_length - high_attention_mask.size(0)), value=0)
+#                 else:
+#                     high_x = high_x[:max_length]
+#                     high_attention_mask = high_attention_mask[:max_length]
+
+#                 if low_x.size(0) < max_length:
+#                     low_x = torch.nn.functional.pad(low_x, (0, max_length - low_x.size(0)), value=0)
+#                     low_attention_mask = torch.nn.functional.pad(low_attention_mask, (0, max_length - low_attention_mask.size(0)), value=0)
+#                 else:
+#                     low_x = low_x[:max_length]
+#                     low_attention_mask = low_attention_mask[:max_length]
+
+#             # Create batch for high_x and low_x
+#                 batch = {
+#                 "input_ids": torch.stack([high_x, low_x]),  
+#                 "attention_mask": torch.stack([high_attention_mask, low_attention_mask])  
+# }
+
+            
+#                 input_embeds = shared(batch["input_ids"])  # Shape: (2, max_length, hidden_size)
+#                 encoder_outputs = encoder_model(
+#                 inputs_embeds=input_embeds,
+#                 attention_mask=batch["attention_mask"])
+#                 encoder_hidden_states = encoder_outputs.last_hidden_state  # Shape: (2, max_length, hidden_size)
+#                 mean_pooled = mean_pooling(encoder_hidden_states, batch["attention_mask"])  # Shape: (2, hidden_size)
+
+            
+#                 z_high, z_low = mean_pooled[0], mean_pooled[1]
+
+            
+#                 z_offline[key].append([(z_high, high_y), (z_low, low_y)])
+
+#         return z_offline
 
     
 
@@ -508,22 +560,22 @@ class BaseRunner(ABC):
             for epoch in range(start_epoch, self.config.training.n_epochs):
                 print("Start at ep: ", epoch)
                 start_time = time.time()
+                all_task_data = []
                 for metadata in self.distinct_meta:
-                
                     data_from_GP = self.generate_data_with_GP(metadata= metadata, lengthscale = lengthscale, variance = variance, noise = noise, mean_prior = mean_prior)
+                    self.get_offline_feature_z_from_GP(data_from_GP, "AntMorphology-Exact-v0")
+                pass    
                     
-                    
-                    
-                    train_loader, current_epoch_val_dataset = create_train_dataloader(data_from_GP=data_from_GP,
+                train_loader, current_epoch_val_dataset = create_train_dataloader(data_from_GP=data_from_GP,
                                                         val_frac=self.config.training.val_frac,
                                                         batch_size=self.config.training.batch_size,
                                                         shuffle=True)
 
-                    val_dataset = val_dataset + current_epoch_val_dataset
+                val_dataset = val_dataset + current_epoch_val_dataset
                 
-                    pbar = tqdm(train_loader, total=len(train_loader), smoothing=0.01, disable=False)
-                    self.global_epoch = epoch
-                    for train_batch in pbar:
+                pbar = tqdm(train_loader, total=len(train_loader), smoothing=0.01, disable=False)
+                self.global_epoch = epoch
+                for train_batch in pbar:
                        self.global_step += 1
                        self.net.train()
 
@@ -562,12 +614,12 @@ class BaseRunner(ABC):
                             ))
 
 
-                    end_time = time.time()
-                    elapsed_rounded = int(round((end_time-start_time)))
-                    self.logger("training time: " + str(datetime.timedelta(seconds=elapsed_rounded)))
+                end_time = time.time()
+                elapsed_rounded = int(round((end_time-start_time)))
+                self.logger("training time: " + str(datetime.timedelta(seconds=elapsed_rounded)))
                 
                     # validation
-                    if (epoch + 1) % self.config.training.validation_interval == 0 or (
+                if (epoch + 1) % self.config.training.validation_interval == 0 or (
                         epoch + 1) == self.config.training.n_epochs:
                         with torch.no_grad():
                             val_loader = create_val_dataloader(val_dataset=val_dataset,
@@ -578,7 +630,7 @@ class BaseRunner(ABC):
                         
 
                     # save checkpoint
-                    if (epoch + 1) % self.config.training.save_interval == 0 or \
+                if (epoch + 1) % self.config.training.save_interval == 0 or \
                         (epoch + 1) == self.config.training.n_epochs:
                         with torch.no_grad():
                             
@@ -634,7 +686,7 @@ class BaseRunner(ABC):
         #     print('traceback.print_exc():')
         #     traceback.print_exc()
         #     print('traceback.format_exc():\n%s' % traceback.format_exc())
-
+    
     @torch.no_grad()
     def test(self, task):
         metadata = load_metadata_from_task_name(task)

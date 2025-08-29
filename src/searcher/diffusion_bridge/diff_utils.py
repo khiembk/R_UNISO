@@ -6,6 +6,21 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import design_bench
 
+
+SOO_TASKS = [
+    "gtopx_data_2_1",
+    "gtopx_data_3_1",
+    "gtopx_data_4_1",
+    "gtopx_data_6_1",
+]
+
+CONTINUOUS_TASKS = [
+    # "AntMorphology-Exact-v0",
+    # "DKittyMorphology-Exact-v0",
+    "Superconductor-RandomForest-v0",
+    # Below are tasks that are not usually used in Design-Bench
+    # "HopperController-Exact-v0",
+]
 def remove_file(fpath):
     if os.path.exists(fpath):
         os.remove(fpath)
@@ -155,7 +170,22 @@ def sampling_from_offline_data(x, y, n_candidates=128, type='random', percentile
     indices = np.random.choice(x.shape[0], size = n_candidates, replace=False)
     return x[indices], y[indices]
     
-### Sampling 128 designs from offline data
+def transfor_x2str(x_np, task_name):
+    if task_name in SOO_TASKS or task_name in CONTINUOUS_TASKS: 
+        print("task_name: ", task_name)
+        print("x_np: ", x_np)
+        x_str =  [f"x{i}: {value.item():.4f}" for i, value in enumerate(x_np)]
+        print("x_str: ", x_str)            
+    else: 
+        print("task_name: ", task_name)
+        print("x_np: ", x_np) 
+        x_str =  [f"x{i}: '{int(value)}'" for i, value in enumerate(x_np)]    
+        print("x_str: ", x_str)   
+
+    pass
+
+
+
 
 ### Testing 128 found designs by the oracle
 def testing_by_oracle(task_name, high_candidates):

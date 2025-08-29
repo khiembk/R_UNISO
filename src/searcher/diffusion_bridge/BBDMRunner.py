@@ -78,7 +78,7 @@ class BBDMRunner(BaseRunner):
     #### Compute loss function
     def loss_fn(self, net, batch, epoch, step, opt_idx=0, stage='train', write=True):
         (x_high, y_high), (x_low, y_low) = batch
-        self.config.training.device[0] = "cuda"
+        #self.config.training.device[0] = "cuda"
         torch.manual_seed(step)
         rand_mask = torch.rand(y_high.size())
         mask = (rand_mask <= self.config.training.classifier_free_guidance_prob)
@@ -87,19 +87,19 @@ class BBDMRunner(BaseRunner):
         y_high[mask] = 0.
         y_low[mask] = 0.
             
-        x_high = x_high.to(self.config.training.device[0])
-        y_high = y_high.to(self.config.training.device[0])
-        x_low = x_low.to(self.config.training.device[0])
-        y_low = y_low.to(self.config.training.device[0])
+        x_high = x_high.to("cuda")
+        y_high = y_high.to("cuda")
+        x_low = x_low.to("cuda")
+        y_low = y_low.to("cuda")
 
         loss, additional_info = net(x_high, y_high, x_low, y_low)
         return loss
 
     @torch.no_grad()
     def sample(self, net, low_candidates, low_scores, high_cond_scores):
-        low_candidates = low_candidates.to(self.config.training.device[0])
-        low_scores = low_scores.to(self.config.training.device[0])
-        high_cond_scores = high_cond_scores.to(self.config.training.device[0])
+        low_candidates = low_candidates.to("cuda")
+        low_scores = low_scores.to("cuda")
+        high_cond_scores = high_cond_scores.to("cuda")
         high_candidates = net.sample(low_candidates, low_scores, high_cond_scores, clip_denoised=self.config.testing.clip_denoised, classifier_free_guidance_weight=self.config.testing.classifier_free_guidance_weight)
         
         return high_candidates
