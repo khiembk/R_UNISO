@@ -172,18 +172,31 @@ def sampling_from_offline_data(x, y, n_candidates=128, type='random', percentile
     
 def transfor_x2str(x_np, task_name):
     if task_name in SOO_TASKS or task_name in CONTINUOUS_TASKS: 
-        print("task_name: ", task_name)
-        print("x_np: ", x_np)
-        x_str =  [f"x{i}: {value.item():.4f}" for i, value in enumerate(x_np)]
-        print("x_str: ", x_str)            
+        # print("task_name: ", task_name)
+        # print("x_np: ", x_np)
+        #x_str =  [f"x{i}: {value.item():.4f}" for i, value in enumerate(x_np)]
+        x_str = ", ".join(f"x{i}: '{value.item():.4f}'" for i, value in enumerate(x_np))
+        # print("x_str: ", x_str)            
     else: 
-        print("task_name: ", task_name)
-        print("x_np: ", x_np) 
-        x_str =  [f"x{i}: '{int(value)}'" for i, value in enumerate(x_np)]    
-        print("x_str: ", x_str)   
+        # print("task_name: ", task_name)
+        # print("x_np: ", x_np) 
+        #x_str =  [f"x{i}: '{int(value)}'" for i, value in enumerate(x_np)]
+        x_str = ", ".join(f"x{i}: '{int(value)}'" for i, value in enumerate(x_np)) 
+        # print("x_str: ", x_str)   
+    ####load
+    metadata = get_metadata_from_task_name(task_name)
+    
+    
+    x_str = "{}. {}".format(metadata, x_str)
+    #print("x_str:", x_str)
+    return x_str
+    
+def get_metadata_from_task_name(task_name):
+    metadata_file = f"data/{task_name}.metadata"
+    with open(metadata_file, "r") as f:
+            metadata = f.read()
 
-    pass
-
+    return str(metadata)
 
 
 
