@@ -204,6 +204,34 @@ class BaseRunner(ABC):
         return  z_offline
     
     @torch.no_grad()
+    def transform_x_2token(self, x_np, name_task):
+        x_str = transfor_x2str(x_np, name_task)
+        x_tokens = self.input_tokenizer(x_str, return_tensors="pt",  
+        padding=True, truncation=True)
+
+        return {
+            "input_ids": x_tokens["input_ids"].squeeze(),
+            "attention_mask": x_tokens["attention_mask"].squeeze(),
+            "name_task": name_task 
+            }
+
+    @torch.no_grad()
+    def transform_x_token_2z(self, x_tokens):
+        input_ids = x_tokens["input_ids"]
+        attention_mask = x_tokens["attention_mask"]
+        # transform to [batch_size, _]
+        if input_ids.dim() == 1:
+            input_ids = input_ids.unsqueeze(0)  
+            attention_mask = attention_mask.unsqueeze(0)
+        input_embeds = self.shared(input_ids)
+        encoder_outputs = self.encoder_model(
+        inputs_embeds=input_embeds, attention_mask= attention_mask)
+        encoder_hidden_states = encoder_outputs.last_hidden_state
+        mean_pooled = self._mean_pooling(encoder_hidden_states, attention_mask)
+               
+        return mean_pooled
+
+    @torch.no_grad()
     def get_offline_feature_z_from_GP(self, datasets, name_task):
         # frozen encoder-decoder
         self.frozen_encoder_decoder()
@@ -215,7 +243,11 @@ class BaseRunner(ABC):
 
             for sample in samples:
                 (high_x, high_y), (low_x, low_y) = sample
-                transfor_x2str(high_x, name_task)
+                print("high_x: ", high_x)
+                x_tokens = self.transform_x_2token(high_x,name_task)
+                print("token high x: ", x_tokens)
+                print("feature high x: ", self.transform_x_token_2z(x_tokens))
+                
                 # Ensure x tensors are on the correct device and have proper shape
 #                 high_x = high_x.to(device)
 #                 low_x = low_x.to(device)
