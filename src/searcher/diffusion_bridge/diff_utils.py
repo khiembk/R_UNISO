@@ -116,6 +116,17 @@ def sampling_data_from_GP(x_train, device, GP_Model, num_gradient_steps = 50, nu
     
     return datasets
 
+class GPDataset(Dataset):
+    def __init__(self, data):
+        self.data = data
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        [[x_high, y_high], [x_low, y_low], task_name ] = self.data[idx]
+        return (x_high, y_high), (x_low, y_low), task_name
+
 class CustomDataset(Dataset):
     def __init__(self, data):
         self.data = data
@@ -131,11 +142,11 @@ class CustomDataset(Dataset):
 def create_train_dataloader(data_from_GP, val_frac=0.2, batch_size=32, shuffle=True):
     train_data = []
     val_data = []
-    for function, function_samples in data_from_GP.items():
-        train_data = train_data + function_samples[int(len(function_samples)*val_frac):]
-        val_data = val_data + function_samples[:int(len(function_samples)*val_frac)]
+    #split train and valid
+    train_data = train_data + data_from_GP[int(len(data_from_GP)*val_frac):]
+    val_data = val_data + data_from_GP[:int(len(data_from_GP)*val_frac)]
         
-    train_dataset = CustomDataset(train_data)
+    train_dataset = GPDataset(train_data)
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle)
 
     return train_dataloader, val_data

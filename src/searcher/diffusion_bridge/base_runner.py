@@ -554,6 +554,27 @@ class BaseRunner(ABC):
                seen.append(meta)
         
         return seen
+    
+    @torch.no_grad()
+    def create_feature_loader(self, lengthscale, variance, noise, mean_prior):
+        
+        feature_datasets = []
+        for task_name in self.distinct_task_name:
+            metadata = self.task_to_metadata[task_name]
+            data_from_GP = self.generate_data_with_GP(metadata= metadata, lengthscale = lengthscale, variance = variance, noise = noise, mean_prior = mean_prior)
+            z_datasets = self.get_offline_feature_z_from_GP(data_from_GP, task_name)
+            feature_datasets.extend(z_datasets)
+                    
+                
+                    
+        train_loader, current_epoch_val_dataset = create_train_dataloader(data_from_GP= feature_datasets,
+                                                        val_frac=self.config.training.val_frac,
+                                                        batch_size=self.config.training.batch_size,
+                                                        shuffle=True)
+
+        return train_dataloader, current_epoch_val_dataset
+  
+
 
     def train(self):
         
@@ -569,20 +590,21 @@ class BaseRunner(ABC):
             val_loader = None
             val_dataset = []
             
+            print("create dataset...")
+            #train_loader, current_epoch_val_dataset = self.create_feature_loader(lengthscale = lengthscale, variance = variance, noise = noise, mean_prior = mean_prior)
+
             accumulate_grad_batches = self.config.training.accumulate_grad_batches 
             for epoch in range(start_epoch, self.config.training.n_epochs):
                 print("Start at ep: ", epoch)
                 start_time = time.time()
-                all_task_data = []
+                
                 feature_datasets = []
                 for task_name in self.distinct_task_name:
                     metadata = self.task_to_metadata[task_name]
                     data_from_GP = self.generate_data_with_GP(metadata= metadata, lengthscale = lengthscale, variance = variance, noise = noise, mean_prior = mean_prior)
                     z_datasets = self.get_offline_feature_z_from_GP(data_from_GP, task_name)
-                    feature_datasets.extend(z_datasets)
-                    #print(z_datasets[0])
-                pass    
-                    
+                    feature_datasets.extend(z_datasets)    
+
                 train_loader, current_epoch_val_dataset = create_train_dataloader(data_from_GP= feature_datasets,
                                                         val_frac=self.config.training.val_frac,
                                                         batch_size=self.config.training.batch_size,

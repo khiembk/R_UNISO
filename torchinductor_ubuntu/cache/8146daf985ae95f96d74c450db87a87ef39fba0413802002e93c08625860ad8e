@@ -1,0 +1,30 @@
+{
+    "system": {
+        "device": {
+            "name": "NVIDIA GeForce RTX 3080"
+        },
+        "version": {
+            "triton": "3.4.063b9eee7d82feea9757d3582580583ea5c2e512baecd1c9ba2890a29dba0b9ae-463e6d170a9f8cc475f9caf60b13abde73f7133d95e0413710d290029ebab977-63b9eee7d82feea9757d3582580583ea5c2e512baecd1c9ba2890a29dba0b9ae-23d635e690d670bf61798e1259674b78c0ed5ba222ab6a455f329f27a758fc2d-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855-c9a17432a7d9f35f9f2f525be5a0f1186197b368fea55395a67796413e83394b-ffa79ab5cef7184d72cfa45bb1648ed2236ce3dfe48078c7dcf7bd0ec31b2a07-318dbf7101b6ea9ebccfc57046fd8d963fe1d837c487005b37edf471a3207a9d-00deb4ba92653e089ad09c2f67cbc85602c84cd3ee2347ddcfcccc2081cfa45e-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855-703cffec3481886c30dc5993abcc425dff6d2fdfcce2528b7ccc996099c4a11a-448c23dda5888b37a97afa2c1d688358c513e087c4dacfa41ce826827c7602f5-2333b0bfd84f0ce403eacc9d7855cdf59acc4634ed14c8472e708ef4286d8744-52c6eb4a6bfdd8c74d5bd25f2a4c83843380648f1daeb4b53caec0bf6ba7ec0e-5d15c5bebef8d7aa51b21fd187e5faa95eba4a213254355bc69e0648013599f7-30106ed84518c6ca7aca08e2c0ee188755f512cc0cb2d7da8914cc48c1ad6dcc-400a9cfc4d4834a8d8956e844529dbf6e5a81010c04259f1927db288858724f4-27b2a5d1e8db008bacefe6019f63922bbd65926de90bb1b527ee597477d2f365-a610dc5c215589aab7a784e1c07acef3e16d53ef00f08de793899964956f4e2a-89e4844782de5fdff4868ac2846514570a6e280a6b92e91af2e180904043c833-45ff80981cdc3ba3915734b14ae2d73b2d25a68653b27440b93be3485f37afe1-0e48b5e1e95136642ccfe62dc3d0a739a2c20a7b5ee13e9c23c6cecd68cdeb70-08abee21ce6230a873ed0831f70f9570b7ce39969dbf9b2f28ae1a1992ee1cc7-8e4b8599f819f32bcabae6fd118dbbccfbec0ba9e1909224d39c5fe32fbb491f-11141fb45eb27ae4cc98f3bbdb6196a5fc2e83bafd6435a1c5384bd64c0b7e62-130a713916833a239d4f84200a7c62157aec0bae769e8ed1a6d56817d3acccdd",
+            "cuda": "12.8"
+        },
+        "hash": "8146daf985ae95f96d74c450db87a87ef39fba0413802002e93c08625860ad8e"
+    },
+    "cache": {
+        "base mm time: ((torch.Size([50, 256]), (256, 1), torch.float32), (torch.Size([256, 384]), (1, 256), torch.float32), None, None, <OpOverloadPacket(op='aten.mm')>, None, False)": 0.048128001391887665,
+        "((torch.Size([50, 256]), (256, 1), torch.float32), (torch.Size([256, 384]), (1, 256), torch.float32), 'exclude_pad:True', 'exclude_pad:False', <OpOverloadPacket(op='aten.mm')>, None, False)": false,
+        "base mm time: ((torch.Size([8, 50, 50]), (2500, 50, 1), torch.float32), (torch.Size([8, 50, 32]), (32, 256, 1), torch.float32), None, None, <OpOverloadPacket(op='aten.bmm')>, None, False)": 0.04403200000524521,
+        "((torch.Size([8, 50, 50]), (2500, 50, 1), torch.float32), (torch.Size([8, 50, 32]), (32, 256, 1), torch.float32), 'exclude_pad:True', 'exclude_pad:False', <OpOverloadPacket(op='aten.bmm')>, None, False)": false,
+        "base mm time: ((torch.Size([8, 50, 32]), (32, 256, 1), torch.float32), (torch.Size([8, 32, 50]), (32, 1, 256), torch.float32), None, None, <OpOverloadPacket(op='aten.bmm')>, None, False)": 0.04403200000524521,
+        "((torch.Size([8, 50, 32]), (32, 256, 1), torch.float32), (torch.Size([8, 32, 50]), (32, 1, 256), torch.float32), 'exclude_pad:False', 'exclude_pad:False', <OpOverloadPacket(op='aten.bmm')>, None, False)": false,
+        "base mm time: ((torch.Size([50, 384]), (384, 1), torch.float32), (torch.Size([384, 256]), (1, 384), torch.float32), None, None, <OpOverloadPacket(op='aten.mm')>, None, False)": 0.047359999269247055,
+        "((torch.Size([50, 384]), (384, 1), torch.float32), (torch.Size([384, 256]), (1, 384), torch.float32), 'exclude_pad:True', 'exclude_pad:False', <OpOverloadPacket(op='aten.mm')>, None, False)": false,
+        "base mm time: ((torch.Size([50, 512]), (512, 1), torch.float32), (torch.Size([512, 384]), (1, 512), torch.float32), None, None, <OpOverloadPacket(op='aten.mm')>, None, False)": 0.04710400104522705,
+        "((torch.Size([50, 512]), (512, 1), torch.float32), (torch.Size([512, 384]), (1, 512), torch.float32), 'exclude_pad:True', 'exclude_pad:False', <OpOverloadPacket(op='aten.mm')>, None, False)": false,
+        "base mm time: ((torch.Size([50, 384]), (384, 1), torch.float32), (torch.Size([384, 512]), (1, 384), torch.float32), None, None, <OpOverloadPacket(op='aten.mm')>, None, False)": 0.04710400104522705,
+        "((torch.Size([50, 384]), (384, 1), torch.float32), (torch.Size([384, 512]), (1, 384), torch.float32), 'exclude_pad:True', 'exclude_pad:False', <OpOverloadPacket(op='aten.mm')>, None, False)": false,
+        "((torch.Size([50, 384]), (384, 1), torch.float32), (torch.Size([384, 512]), (1, 384), torch.float32), 'exclude_pad:False', 'exclude_pad:False', <OpOverloadPacket(op='aten.mm')>, None, False)": false,
+        "((torch.Size([50, 384]), (384, 1), torch.float32), (torch.Size([384, 256]), (1, 384), torch.float32), 'exclude_pad:False', 'exclude_pad:False', <OpOverloadPacket(op='aten.mm')>, None, False)": false,
+        "base mm time: ((torch.Size([50, 384]), (384, 1), torch.float32), (torch.Size([384, 217]), (1, 384), torch.float32), None, None, <OpOverloadPacket(op='aten.mm')>, None, False)": 0.048128001391887665,
+        "((torch.Size([s50, 384]), (384, 1), torch.float32), (torch.Size([384, 217]), (1, 384), torch.float32), 'exclude_pad:False', 'exclude_pad:False', <OpOverloadPacket(op='aten.mm')>, None, False)": false
+    }
+}
