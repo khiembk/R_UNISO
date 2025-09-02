@@ -261,6 +261,7 @@ class BaseRunner(ABC):
                 (high_x, high_y), (low_x, low_y) = sample
                 z_high = self.transform_x2_z(high_x, name_task)
                 z_low = self.transform_x2_z(low_x, name_task)
+                #print("size of z: ",z_low.shape)
                 z_sample = [(z_high.detach(),high_y),(z_low.detach(),low_y), name_task]
                 z_datasets.append(z_sample)
         

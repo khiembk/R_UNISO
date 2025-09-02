@@ -135,7 +135,7 @@ class CustomDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        [[x_high, y_high], [x_low, y_low]] = self.data[idx]
+        [[x_high, y_high], [x_low, y_low]]  = self.data[idx]
         return (x_high, y_high), (x_low, y_low)
 
 # Create a DataLoader for each epoch
@@ -153,7 +153,7 @@ def create_train_dataloader(data_from_GP, val_frac=0.2, batch_size=32, shuffle=T
 
 def create_val_dataloader(val_dataset, batch_size=32, shuffle=False):
     
-    valid_dataset = CustomDataset(val_dataset)
+    valid_dataset = GPDataset(val_dataset)
     valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=shuffle)
 
     return valid_dataloader

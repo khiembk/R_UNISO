@@ -28,7 +28,8 @@ model:
       MLPParams:
         condition_key: SpatialRescaler
         hidden_size: 1024
-        image_size: 60
+        #image_size: 60
+        image_size: 384
       loss_type: l1
       max_var: 1.0
       mt_type: linear
