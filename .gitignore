@@ -167,3 +167,4 @@ configs/local/default.yaml
 
 /thirdparty_benchmark/
 /diff_results/
+/torchinductor_ubuntu

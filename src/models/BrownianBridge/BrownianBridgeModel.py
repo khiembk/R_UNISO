@@ -90,8 +90,10 @@ class BrownianBridgeModel(nn.Module):
         return self.denoise_fn.parameters()
 
     def forward(self, x_high, y_high, x_low, y_low):
-        
-        b, d, device, img_size, = *x_high.shape, x_high.device, self.image_size
+        print("x_high.shape")
+        b, d =  *x_high.shape
+        device  =  x_high.device
+        img_size = self.image_size
         # assert d == img_size, f'dimension of data must be {img_size}'
         t = torch.randint(0, self.num_timesteps, (b,), device=device).long()
         return self.p_losses(x_high, y_high, x_low, y_low, t)
