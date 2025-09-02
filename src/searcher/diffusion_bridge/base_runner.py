@@ -770,38 +770,37 @@ class BaseRunner(ABC):
         
         # return percentiles[0].item(), percentiles[1].item(), percentiles[2].item()
     @torch.no_grad()
-    def infer_feature_with_metadata(self, task_name, task_instance, metadata_string):
-        x_np = task_instance.x_np
-        if len(x_np.shape) == 1:
-            x_np = x_np.reshape(1, -1)
-        batch_size, n_var = x_np.shape
-        ms = tuple([metadata_string for _ in range(batch_size)])
-        def sol2str(single_solution):
-            res_str = ", ".join(
-            f"x{i}: {val.item():.4f}" if not task_name.startswith('TFBind') else f"x{i}: '{int(val.item())}'" for i, val in enumerate(single_solution))
-            return res_str
+    def infer_feature_with_metadata(self, task_name, xs_np ):
+        
+        z_list = []
+        pbar = tqdm(xs_np, total=len(xs_np), smoothing=0.01, disable=False)
+        cur_batch = 0
+        
+        for x_np in pbar:
+            z = self.transform_x2_z(x_np, task_name)
+            z_list.append(z)
+            
+        return z_list
 
-        x_str = [sol2str(x0) for x0 in x_np]
-        input_str = [f"{m0}. {x0}" for x0, m0 in zip(x_str, ms)]
-        input_tokens = self.input_tokenizer(input_str, padding="max_length", truncation=True, return_tensors="pt")
-        input_embeds = self.shared(input_tokens["input_ids"])
-        encoder_outputs = self.encoder_model(
-            inputs_embeds=input_embeds, attention_mask= input_tokens["attention_mask"]
-        ).last_hidden_state
-        mean_pooled = self._mean_pooling(encoder_outputs, input_tokens["attention_mask"])
-        return mean_pooled
-         
     @torch.no_grad()
     def run(self, task_instance, task_name, metadata_string):
-        self.offline_y_m = task_instance.y_np 
-        self.offline_z_m = self.infer_feature_with_metadata(task_name= task_name,task_instance = task_instance, metadata_string = metadata_string)
+        self.offline_x_m = torch.tensor(task_instance.x_np)  # Convert x_np to tensor
+        self.offline_y_m = torch.tensor(task_instance.y_np)
+        # print("offline y_m: ", self.offline_y_m[0])
+        # print("offline x_m: ", self.offline_x_m[0])
+        print("len of x_m: ", len(self.offline_x_m))
+        print("len of y_m: ", len(self.offline_y_m))
+        ### infer feature z
+        # print("infer feature z...") 
+        # self.offline_z_m = self.infer_feature_with_metadata(task_name= task_name,task_instance = task_instance)
         
-        mean_offline_y = np.mean(self.offline_y_m)
-        std_offline_y = np.std(self.offline_y_m)
-
-
-        low_candidates, low_scores = sampling_from_offline_data(x=self.offline_z_m,
-                                                                y=self.offline_y_m,
+        mean_offline_y = np.mean(task_instance.y_np)
+        std_offline_y = np.std(task_instance.y_np)
+        # x_m_2d = torch.stack(self.offline_x_m)
+        # x_m_2d = x_m_2d.to(dtype=torch.float32, device="cuda")
+       
+        low_candidates_x, low_scores = sampling_from_offline_data(x= self.offline_x_m,
+                                                                y= self.offline_y_m,
                                                                 n_candidates=self.config.testing.num_candidates, 
                                                                 type=self.config.testing.type_sampling,
                                                                 percentile_sampling=self.config.testing.percentile_sampling,
@@ -809,7 +808,11 @@ class BaseRunner(ABC):
         if self.use_ema:
             self.apply_ema()
         self.net.eval()
-
+        
+        low_candidates_z = self.infer_feature_with_metadata(task_name= task_name, xs_np = low_candidates_x)
+        
+        low_candidates_z = torch.stack(low_candidates_z)
+        
         task_to_min = {'TFBind8-Exact-v0': 0.0, 'TFBind10-Exact-v0': -1.8585268, 'AntMorphology-Exact-v0': -386.90036, 'DKittyMorphology-Exact-v0': -880.4585}
         task_to_max = {'TFBind8-Exact-v0': 1.0, 'TFBind10-Exact-v0': 2.1287067, 'AntMorphology-Exact-v0': 590.24445, 'DKittyMorphology-Exact-v0': 340.90985}
         task_to_best = {'TFBind8-Exact-v0': 0.43929616, 'TFBind10-Exact-v0': 0.005328223, 'AntMorphology-Exact-v0': 165.32648, 'DKittyMorphology-Exact-v0': 199.36252}
@@ -820,7 +823,7 @@ class BaseRunner(ABC):
         normalized_oracle_y_max = (oracle_y_max - mean_offline_y) / std_offline_y
         high_cond_scores = torch.full(low_scores.shape, normalized_oracle_y_max.item()*self.config.testing.alpha)
         
-        high_candidates_z = self.sample(self.net, low_candidates, low_scores, high_cond_scores)
+        high_candidates_z = self.sample(self.net, low_candidates_z, low_scores, high_cond_scores)
         ### decode the to x space
         high_candidates = self._decode_x(high_candidates_z, task_instance)
          

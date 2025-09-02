@@ -50,12 +50,13 @@ class MLP(nn.Module):
 
     def forward(self, x_t, t, y_high, y_low):
         # init
+        
         sz = x_t.size()
         x_t = x_t.view(-1, self.input_dim)
         t = t.view(-1, self.index_dim).float()
         y_high = y_high.view(-1, self.y_dim).float()
         y_low = y_low.view(-1, self.y_dim).float()
-
+       
         # forward
         h = torch.cat([x_t, t, y_high, y_low], dim=1)  # concat
         output = self.main(h)  # forward
