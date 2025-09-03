@@ -306,24 +306,27 @@ class BaseRunner(ABC):
 
     @torch.no_grad()
     def _decode_x(self, z: torch.Tensor, task) -> np.ndarray:
-        self.frozen_encoder_decoder()
+        if z.dim() == 3 and z.size(1) == 1:
+            z = z.squeeze(1)
+        print("shape of z: ", z.shape)
+        z.to("cuda")
+        self.decoder_model.to("cuda")
         ### decoder form z to x
-        x_res = self.decoder_model(z).clone()
-        ### from token to numpy
-        x_res = inverse_batch_norm(x_res, self.encoder.batch_norm).detach().cpu().numpy()
-        if not isinstance(task, DesignBenchTask) and task.task_type in [
-            "Continuous",
-            "Integer",
-        ]:
-            x_res = np.clip(x_res, self.xl, self.xu)
-        if task.task_type == "Categorical":
-            x_res = x_res.reshape((-1,) + tuple(self.logits_shape))
-            x_res = task.task.to_integers(x_res)
-        elif task.task_type == "Integer":
-            x_res = x_res.astype(np.int64)
-        elif self.task.task_type == "Permutation":
-            x_res = x_res.argsort().argsort()
-        return x_res
+        x_res = self.decoder_model(z)
+        x_res = x_res.clone()
+        #print("x_res: ", x_res[0])
+        # for x_token in x_res: 
+        #     if x_token.dim()==1: 
+        #        x_token = x_token.unsqueeze(0)
+        #     vocab_size = self.input_tokenizer.vocab_size
+        #     print(f"Input_ids range: min={x_token.min().item()}, max={x_token.max().item()}, vocab_size={vocab_size}")
+        #     input_ids = torch.clamp(x_token, min=0, max=vocab_size-1)
+
+        #     x_str_list = [self.input_tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
+            
+        #     print("x_str_list: ", x_str_list)
+            
+      
 
     
     # print msg
