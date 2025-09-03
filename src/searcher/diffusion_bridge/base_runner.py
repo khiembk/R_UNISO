@@ -178,10 +178,10 @@ class BaseRunner(ABC):
                     if task_name not in task_to_metadata:
                        task_to_metadata[task_name] = m_embeddings[i]
      
-            batch_count += 1
-            if batch_count >= max_batches:
-                pbar.close()  # Properly close the progress bar
-                break
+            # batch_count += 1
+            # if batch_count >= max_batches:
+            #     pbar.close()  # Properly close the progress bar
+            #     break
 
         #print("dic name_task-metadata: ", task_to_metadata)    
         self.task_names = task_names
@@ -199,7 +199,7 @@ class BaseRunner(ABC):
         train_dataloader = self.datamodule.train_dataloader()
         pbar = tqdm(train_dataloader, total=len(train_dataloader), smoothing=0.01, disable=False)
         batch_count = 0
-        max_batches = 50
+        # max_batches = 50
        
         z_offline = []
     
@@ -211,10 +211,10 @@ class BaseRunner(ABC):
                 encoder_hidden_states = encoder_outputs.last_hidden_state
                 mean_pooled = self._mean_pooling(encoder_hidden_states, batch["attention_mask"])
                 z_offline.append(mean_pooled)
-            batch_count += 1
-            if batch_count >= max_batches:
-                pbar.close()  # Properly close the progress bar
-                break
+            # batch_count += 1
+            # if batch_count >= max_batches:
+            #     pbar.close()  # Properly close the progress bar
+            #     break
         return  z_offline
     
     @torch.no_grad()
@@ -335,7 +335,7 @@ class BaseRunner(ABC):
                print(f"Error decoding input_ids {ids}: {e}")
                x_str_list.append("")  # Fallback for failed decoding
         
-        print("x_str: ", x_str_list[0])
+        #print("x_str: ", x_str_list[0])
         return x_str_list
             
       
