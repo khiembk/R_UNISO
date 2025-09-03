@@ -314,17 +314,29 @@ class BaseRunner(ABC):
         ### decoder form z to x
         x_res = self.decoder_model(z)
         x_res = x_res.clone()
-        #print("x_res: ", x_res[0])
-        # for x_token in x_res: 
-        #     if x_token.dim()==1: 
-        #        x_token = x_token.unsqueeze(0)
-        #     vocab_size = self.input_tokenizer.vocab_size
-        #     print(f"Input_ids range: min={x_token.min().item()}, max={x_token.max().item()}, vocab_size={vocab_size}")
-        #     input_ids = torch.clamp(x_token, min=0, max=vocab_size-1)
+        input_ids = torch.argmax(x_res, dim=-1)
+        #print("input_ids: ", input_ids[0])
 
-        #     x_str_list = [self.input_tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
-            
-        #     print("x_str_list: ", x_str_list)
+        vocab_size = self.input_tokenizer.vocab_size
+        if input_ids.min().item() < 0 or input_ids.max().item() >= vocab_size:
+            print(f"Warning: input_ids contains invalid values (min: {input_ids.min().item()}, max: {input_ids.max().item()}, vocab_size: {vocab_size})")
+            input_ids = torch.clamp(input_ids, min=0, max=vocab_size - 1)
+    
+   
+        #print(f"input_ids shape: {input_ids.shape}, dtype: {input_ids.dtype}, device: {input_ids.device}")
+    
+    
+        x_str_list = []
+        for ids in input_ids:
+            try:
+               x_str = self.input_tokenizer.decode(ids, skip_special_tokens=True).strip()
+               x_str_list.append(x_str)
+            except Exception as e:
+               print(f"Error decoding input_ids {ids}: {e}")
+               x_str_list.append("")  # Fallback for failed decoding
+        
+        print("x_str: ", x_str_list[0])
+        return x_str_list
             
       
 
