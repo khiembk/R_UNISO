@@ -12,7 +12,7 @@ from models.utils import extract, default
 from models.BrownianBridge.base.modules.encoders.modules import SpatialRescaler
 from models.BrownianBridge.base.modules.ours.mlp import MLP
 # from model.BrownianBridge.base.modules.ours.unet import UNET_1D
-
+from models.BrownianBridge.base.modules.ours.mlp import task_classifier_MLP
 class BrownianBridgeModel(nn.Module):
     def __init__(self, model_config):
         super().__init__()

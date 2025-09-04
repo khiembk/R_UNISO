@@ -191,3 +191,229 @@ class P10Tokenizer(PreTrainedTokenizer):
             text = self.convert_tokens_to_string(tokens)
             decoded.append(text)
         return decoded
+
+class VectorTokenizer(PreTrainedTokenizer):
+    def __init__(
+        self,
+        pad_token="[PAD]",
+        unk_token="[UNK]",
+        eos_token="</s>",
+        bos_token="<s>",
+        sep_token=",",
+        vec_start_token="[",
+        vec_end_token="]",
+        max_length=128,
+        max_vector_length=10,  # Maximum number of elements in a vector
+        **kwargs,
+    ) -> None:
+        # Initialize the number tokenizer
+        self.number_tokenizer = P10Tokenizer(
+            pad_token=pad_token,
+            unk_token=unk_token,
+            eos_token=eos_token,
+            bos_token=bos_token,
+            max_length=max_length,
+            **kwargs,
+        )
+        
+        # Vector-specific special tokens
+        self.sep_token = sep_token
+        self.vec_start_token = vec_start_token
+        self.vec_end_token = vec_end_token
+        self.max_vector_length = max_vector_length
+        self.max_length = max_length
+
+        # Combine vocab from P10Tokenizer with vector-specific tokens
+        self.special_tokens = [
+            pad_token,
+            unk_token,
+            eos_token,
+            bos_token,
+            sep_token,
+            vec_start_token,
+            vec_end_token,
+        ]
+        self.vocab = self.number_tokenizer.vocab + [sep_token, vec_start_token, vec_end_token]
+        self._token_to_id = {token: idx for idx, token in enumerate(self.vocab)}
+        self._id_to_token = {idx: token for idx, token in enumerate(self.vocab)}
+
+        super().__init__(
+            pad_token=pad_token,
+            unk_token=unk_token,
+            eos_token=eos_token,
+            bos_token=bos_token,
+            **kwargs,
+        )
+
+    @property
+    def bos_token_id(self) -> Optional[int]:
+        """Get the ID of the beginning of sequence token."""
+        return self._token_to_id.get(self.bos_token)
+
+    @property
+    def eos_token_id(self) -> Optional[int]:
+        """Get the ID of the end of sequence token."""
+        return self._token_to_id.get(self.eos_token)
+
+    @property
+    def decoder_start_token_id(self) -> int:
+        """Get the ID of decoder start token (same as bos_token_id for T5)."""
+        return self._token_to_id.get(self.bos_token)
+
+    @property
+    def sep_token_id(self) -> int:
+        """Get the ID of the separator token."""
+        return self._token_to_id.get(self.sep_token)
+
+    @property
+    def vec_start_token_id(self) -> int:
+        """Get the ID of the vector start token."""
+        return self._token_to_id.get(self.vec_start_token)
+
+    @property
+    def vec_end_token_id(self) -> int:
+        """Get the ID of the vector end token."""
+        return self._token_to_id.get(self.vec_end_token)
+
+    def get_vocab(self) -> Dict[str, int]:
+        """Return a copy of the token-to-ID mapping."""
+        return self._token_to_id.copy()
+
+    @property
+    def vocab_size(self) -> int:
+        """Return the size of the vocabulary."""
+        return len(self._token_to_id)
+
+    def _tokenize(self, text: str) -> List[str]:
+        """Tokenize a vector string (e.g., '[3.14, -5.12, 0]') or list of strings."""
+        try:
+            # If input is a string, parse it as a vector (e.g., '[3.14, -5.12, 0]')
+            if isinstance(text, str):
+                # Remove whitespace and brackets, split by comma
+                text = text.strip().strip('[]').split(',')
+                text = [t.strip() for t in text if t.strip()]
+            elif not isinstance(text, list):
+                return [self.unk_token]
+
+            # Limit the vector length
+            text = text[:self.max_vector_length]
+
+            # Tokenize each number and build the token sequence
+            tokens = [self.vec_start_token]
+            for i, num in enumerate(text):
+                num_tokens = self.number_tokenizer._tokenize(num)
+                tokens.extend(num_tokens)
+                if i < len(text) - 1:
+                    tokens.append(self.sep_token)
+            tokens.append(self.vec_end_token)
+            return tokens
+
+        except Exception:
+            return [self.unk_token]
+
+    def _convert_token_to_id(self, token: str) -> int:
+        """Convert a token to its ID."""
+        return self._token_to_id.get(token, self._token_to_id[self.unk_token])
+
+    def _convert_id_to_token(self, index: int) -> str:
+        """Convert an ID to its token."""
+        return self._id_to_token.get(index, self.unk_token)
+
+    def build_inputs_with_special_tokens(
+        self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
+    ) -> List[int]:
+        """Build model inputs by adding special tokens."""
+        if token_ids_1 is None:
+            return [self.bos_token_id] + token_ids_0 + [self.eos_token_id]
+        return [self.bos_token_id] + token_ids_0 + [self.eos_token_id] + token_ids_1 + [self.eos_token_id]
+
+    def convert_tokens_to_string(self, tokens: List[str]) -> str:
+        """Convert a list of tokens back to a vector string."""
+        # Remove special tokens if present
+        tokens = [
+            t for t in tokens
+            if t not in [self.pad_token, self.bos_token, self.eos_token]
+        ]
+
+        if not tokens or tokens[0] != self.vec_start_token or tokens[-1] != self.vec_end_token:
+            return self.unk_token
+
+        try:
+            # Remove vector start and end tokens
+            tokens = tokens[1:-1]
+            if not tokens:
+                return "[]"
+
+            # Split tokens into numbers based on separator
+            number_tokens = []
+            current_number = []
+            for token in tokens:
+                if token == self.sep_token:
+                    number_tokens.append(current_number)
+                    current_number = []
+                else:
+                    current_number.append(token)
+            number_tokens.append(current_number)  # Append the last number
+
+            # Convert each group of tokens to a number
+            result = []
+            for num_tokens in number_tokens:
+                if num_tokens:
+                    num_str = self.number_tokenizer.convert_tokens_to_string(num_tokens)
+                    result.append(num_str)
+
+            # Format as a vector string
+            return f"[{', '.join(result)}]"
+
+        except Exception:
+            return self.unk_token
+
+    def get_special_tokens_mask(
+        self,
+        token_ids_0: List[int],
+        token_ids_1: Optional[List[int]] = None,
+        already_has_special_tokens: bool = False,
+    ) -> List[int]:
+        """Generate a mask for special tokens."""
+        if already_has_special_tokens:
+            return super().get_special_tokens_mask(
+                token_ids_0=token_ids_0,
+                token_ids_1=token_ids_1,
+                already_has_special_tokens=True,
+            )
+
+        special_tokens_ids = {self._token_to_id[token] for token in self.special_tokens}
+        mask = [1 if token in special_tokens_ids else 0 for token in token_ids_0]
+        if token_ids_1 is not None:
+            mask += [1 if token in special_tokens_ids else 0 for token in token_ids_1]
+        return mask
+
+    def save_vocabulary(
+        self, save_directory: str, filename_prefix: Optional[str] = None
+    ) -> Tuple[str]:
+        """Save the vocabulary to a file."""
+        if not os.path.isdir(save_directory):
+            os.makedirs(save_directory)
+
+        vocab_file = os.path.join(
+            save_directory,
+            (filename_prefix + "-" if filename_prefix else "") + "vocab.json",
+        )
+
+        with open(vocab_file, "w", encoding="utf-8") as f:
+            json.dump(self._token_to_id, f, ensure_ascii=False)
+
+        return (vocab_file,)
+
+    def batch_decode(
+        self, sequences: List[List[int]], skip_special_tokens: bool = False, **kwargs
+    ) -> List[str]:
+        """Decode a batch of sequences into strings."""
+        decoded = []
+        for seq in sequences:
+            tokens = [self._convert_id_to_token(idx) for idx in seq]
+            if skip_special_tokens:
+                tokens = [t for t in tokens if t not in self.special_tokens]
+            text = self.convert_tokens_to_string(tokens)
+            decoded.append(text)
+        return decoded

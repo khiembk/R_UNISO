@@ -15,7 +15,7 @@ from transformers import T5EncoderModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 from transformers.models.t5.modeling_t5 import T5Stack,T5Config
 from transformers.tokenization_utils_base import BatchEncoding
-
+from src.data.components.tokenizer import VectorTokenizer
 
 
 #### define T5DecoderContruct module
@@ -27,7 +27,7 @@ class T5ReconstructionDecoder(nn.Module):
             d_model=hidden_size,
             num_layers=num_layers,
             num_heads=8,
-            d_ff=2048,
+            d_ff= 512,
             dropout_rate=0.1,
             is_decoder=True,
             add_cross_attention=False,  # No separate encoder states; treat input z as initial state
@@ -36,16 +36,14 @@ class T5ReconstructionDecoder(nn.Module):
         self.decoder = T5Stack(config)
         self.lm_head = nn.Linear(hidden_size, vocab_size, bias=False)
 
-    def forward(self, z):
-        # z: [batch_size, hidden_size] -> treat as initial embedding, expand to sequence
-        batch_size = z.size(0)
-        # Repeat z across sequence length to simulate a decoder input sequence
-        inputs_embeds = z.unsqueeze(1).repeat(1, self.max_seq_length, 1)  # [batch_size, max_seq_length, hidden_size]
-        # Dummy attention mask
-        attention_mask = torch.ones(batch_size, self.max_seq_length, device=z.device)
+    def forward(self, x_ori_input_ids, x_ori_attention_mask, encoder_hidden_states, encoder_attention_mask):
         
-        outputs = self.decoder(inputs_embeds=inputs_embeds, attention_mask=attention_mask)
-        logits = self.lm_head(outputs.last_hidden_state)  # [batch_size, max_seq_length, vocab_size]
+        
+        outputs = self.decoder(inputs_embeds= x_ori_input_ids,
+            attention_mask= x_ori_attention_mask,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask)
+        logits = self.lm_head(outputs.last_hidden_state)  
         return logits
 
     def model(self):
@@ -68,6 +66,7 @@ class EncoderDecoderModule(LightningModule):
         temperature: float = 0.07,
         max_seq_length: int = 50,
         rec_model : Any = None,
+        vector_tokenizer : Any, 
     ) -> None:
         super().__init__()
 
@@ -112,7 +111,7 @@ class EncoderDecoderModule(LightningModule):
         self.decoder_input_proj = nn.Linear(
             self.encoder_hidden_size, self.decoder_hidden_size
         )
-        
+        #### define lm head
         self.lm_head = nn.Linear(
             self.decoder_hidden_size, decoder_config.vocab_size, bias=False
         )
@@ -134,12 +133,13 @@ class EncoderDecoderModule(LightningModule):
 
     ### define reconstruction loss 
     def rec_loss(self, x: torch.Tensor, recon_outputs: torch.Tensor) -> torch.Tensor:
-        loss = torch.nn.functional.cross_entropy(
-               recon_outputs.view(-1, recon_outputs.size(-1)),  # [batch_size * max_seq_length, vocab_size]
-               x.to(self.device).view(-1),                     # [batch_size * max_seq_length]
-               ignore_index=0,                                 # Ignore padding token
+        loss_fct = CrossEntropyLoss(ignore_index=-100)
+        loss = loss_fct(
+               recon_outputs.view(-1, recon_outputs.size(-1)),  
+               x.to(self.device).view(-1),                     
                reduction="mean"
                ) / self.temperature
+        
         return loss
 
     def contrastive_loss(self, embeddings1, embeddings2):
@@ -193,6 +193,8 @@ class EncoderDecoderModule(LightningModule):
         decoder_input_ids: Optional[torch.Tensor] = None,
         decoder_attention_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
+        x_ori_input_ids: torch.Tensor = None,
+        x_ori_label: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         # Encoder
         input_embeds = self.shared(input_ids)
@@ -205,8 +207,8 @@ class EncoderDecoderModule(LightningModule):
         mean_pooled = self._mean_pooling(encoder_hidden_states, attention_mask)
         projected_embeddings = self.projection_head(mean_pooled)
         # Reconstruction from projected embeddings
-        recon_outputs = self.rec_model(mean_pooled)
-        rec_loss = self.rec_loss(input_ids, recon_outputs) if input_ids is not None else None
+        recon_outputs = self.rec_model(mean_pooled, x_ori_input_ids)
+        rec_loss = self.rec_loss(x_ori_label, recon_outputs) if input_ids is not None else None
 
 
 

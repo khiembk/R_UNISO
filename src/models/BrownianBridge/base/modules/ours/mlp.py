@@ -112,7 +112,7 @@ class task_classifier_MLP(nn.Module):
         t = t.view(-1, self.index_dim).float()
         y_high = y_high.view(-1, self.y_dim).float()
         y_low = y_low.view(-1, self.y_dim).float()
-        batch_size = y_low[0]
+        batch_size = y_low.shape[0]
         if task_info is not None:
            task_info = task_info.view(-1, self.task_dim).float()
         else: 

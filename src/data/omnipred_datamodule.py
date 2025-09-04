@@ -185,6 +185,7 @@ class NonShuffledOmnipredDataModule(OmnipredDataModule):
 
             x_values = []
             y_values = []
+            
             metadatas = []
             task_names_list = []
             for task_name in task_names:

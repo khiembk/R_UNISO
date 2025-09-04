@@ -5,6 +5,7 @@ from torch.utils.data import Dataset
 import re
 
 from src.data.data_utils import normalize_ys_from_different_tasks
+from src.data.components.tokenizer import VectorTokenizer
 
 class OmnipredDataset(Dataset):
     def __init__(
@@ -13,6 +14,7 @@ class OmnipredDataset(Dataset):
         y_data: List[str],
         input_tokenizer: Any,
         output_tokenizer: Any,
+        x_ori_tokenizer: Any = VectorTokenizer,
         concat_metadata: bool = True,
         cat_front: bool = True,
         metadatas: Optional[List[str]] = None,
@@ -29,6 +31,8 @@ class OmnipredDataset(Dataset):
         self.max_length = max_length
         self.concat_metadata = concat_metadata
         self.metadatas = metadatas
+        self.x_ori_tokenizer = x_ori_tokenizer(max_length=self.max_length)
+
         if metadata_exclude_items is not None:
             assert metadata_exclude_items in [0, 1, 2]
             for i, m in enumerate(self.metadatas):
@@ -58,8 +62,19 @@ class OmnipredDataset(Dataset):
         y = str(self.y_data[idx])
         
         x_not_concat = str(self.x_not_concat[idx])
+        
+        x_ori = self.recover_data_from_to_string_single(x_not_concat)
         value = self.values[idx]
 
+        x_string_list = self.recover_data_from_to_string_list(x_not_concat)
+        #print("x_string_list: ",x_string_list)
+        x_ori_token = self.x_ori_tokenizer(
+            x_string_list,
+            padding="max_length",
+            max_length=self.max_length,
+            truncation=True,
+            return_tensors="pt",
+        )    
         # Encode input sequence
         x_tokens = self.input_tokenizer(
             x,
@@ -68,7 +83,7 @@ class OmnipredDataset(Dataset):
             truncation=True,
             return_tensors="pt",
         )
-
+        #print("X_ori_token:", x_ori_token) 
         # Encode target sequence
         y_tokens = self.output_tokenizer(
             y,
@@ -88,14 +103,26 @@ class OmnipredDataset(Dataset):
         )
         for k, v in metadata_tokens.items():
             metadata_tokens[k] = v.squeeze()
+        
 
-        # Create decoder_input_ids
+        x_ori_input_ids = x_ori_token["input_ids"].clone()
+        x_ori_input_ids = self._shift_right(
+            x_ori_input_ids.squeeze(),
+            self.x_ori_tokenizer.pad_token_id,
+            self.x_ori_tokenizer.decoder_start_token_id,
+
+        )
+        x_ori_label = x_ori_token["input_ids"].squeeze()
+        x_ori_label[x_ori_label == self.x_ori_tokenizer.pad_token_id] = -100
+
+        # Create decoder_input_ids is label shift right
         decoder_input_ids = y_tokens["input_ids"].clone()
         decoder_input_ids = self._shift_right(
             decoder_input_ids.squeeze(),
             self.output_tokenizer.pad_token_id,
             self.output_tokenizer.decoder_start_token_id,
         )
+        
 
         # For T5, we need to replace padding tokens in labels with -100
         labels = y_tokens["input_ids"].squeeze()
@@ -111,7 +138,9 @@ class OmnipredDataset(Dataset):
             "metadata": metadata_tokens,
             "value": value.squeeze(),
             "ori_y": y,
-            "ori_x": self.recover_data_from_to_string_single(x_not_concat),
+            "ori_x": x_ori,
+            "x_ori_label": x_ori_label,
+            "x_ori_input_ids": x_ori_input_ids,
         }
 
     def _shift_right(self, input_ids, pad_token_id, decoder_start_token_id):
@@ -143,3 +172,13 @@ class OmnipredDataset(Dataset):
                 recovered_data.append(0)
         #print("output: ",recovered_data)
         return np.array(recovered_data)
+
+    def recover_data_from_to_string_list(self,string_data: str) -> np.ndarray:
+        #print("input: ", string_data) 
+        values = re.findall(r"x\d+:\s*['\"]?(\d+)['\"]?", string_data)
+     
+        recovered_data = []
+        for value in values:
+            recovered_data.append(value)
+                
+        return recovered_data
