@@ -19,6 +19,7 @@ class OmnipredDataModule(LightningDataModule):
         *,
         input_tokenizer: Any,
         output_tokenizer: Any,
+        vector_tokenizer: Any,
         max_length: int = 128,
         concat_metadata: bool = True,
         cat_front: bool = True,
@@ -99,6 +100,7 @@ class OmnipredDataModule(LightningDataModule):
             dataset = OmnipredDataset(
                 x_data=x_values,
                 y_data=y_values,
+                vector_tokenizer = self.vector_tokenizer,
                 input_tokenizer=self.hparams.input_tokenizer,
                 output_tokenizer=self.hparams.output_tokenizer,
                 concat_metadata=self.hparams.concat_metadata,

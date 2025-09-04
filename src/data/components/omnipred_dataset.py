@@ -14,7 +14,7 @@ class OmnipredDataset(Dataset):
         y_data: List[str],
         input_tokenizer: Any,
         output_tokenizer: Any,
-        x_ori_tokenizer: Any = VectorTokenizer,
+        vector_tokenizer: Any,
         concat_metadata: bool = True,
         cat_front: bool = True,
         metadatas: Optional[List[str]] = None,
@@ -31,7 +31,7 @@ class OmnipredDataset(Dataset):
         self.max_length = max_length
         self.concat_metadata = concat_metadata
         self.metadatas = metadatas
-        self.x_ori_tokenizer = x_ori_tokenizer(max_length=self.max_length)
+        self.vector_tokenizer = vector_tokenizer
 
         if metadata_exclude_items is not None:
             assert metadata_exclude_items in [0, 1, 2]
@@ -68,7 +68,7 @@ class OmnipredDataset(Dataset):
 
         x_string_list = self.recover_data_from_to_string_list(x_not_concat)
         #print("x_string_list: ",x_string_list)
-        x_ori_token = self.x_ori_tokenizer(
+        x_ori_token = self.vector_tokenizer(
             x_string_list,
             padding="max_length",
             max_length=self.max_length,
@@ -108,12 +108,12 @@ class OmnipredDataset(Dataset):
         x_ori_input_ids = x_ori_token["input_ids"].clone()
         x_ori_input_ids = self._shift_right(
             x_ori_input_ids.squeeze(),
-            self.x_ori_tokenizer.pad_token_id,
-            self.x_ori_tokenizer.decoder_start_token_id,
+            self.vector_tokenizer.pad_token_id,
+            self.vector_tokenizer.decoder_start_token_id,
 
         )
         x_ori_label = x_ori_token["input_ids"].squeeze()
-        x_ori_label[x_ori_label == self.x_ori_tokenizer.pad_token_id] = -100
+        x_ori_label[x_ori_label == self.vector_tokenizer.pad_token_id] = -100
 
         # Create decoder_input_ids is label shift right
         decoder_input_ids = y_tokens["input_ids"].clone()
