@@ -25,7 +25,7 @@ decoder_model:
 
 input_tokenizer: ${data.input_tokenizer}
 output_tokenizer: ${data.output_tokenizer}
-
+vector_tokenizer: ${data.vector_tokenizer}
 optimizer:
   _target_: torch.optim.AdamW
   _partial_: true

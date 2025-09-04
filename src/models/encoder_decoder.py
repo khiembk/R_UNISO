@@ -20,24 +20,24 @@ from src.data.components.tokenizer import VectorTokenizer
 
 #### define T5DecoderContruct module
 class T5ReconstructionDecoder(nn.Module):
-    def __init__(self, hidden_size: int, vocab_size: int, max_seq_length: int, num_layers: int = 6):
+    def __init__(self, d_model:int, vocab_size: int, num_layers: int = 6):
         super().__init__()
-        self.max_seq_length = max_seq_length
+        #self.max_seq_length = max_seq_length
         config = T5Config(
-            d_model=hidden_size,
+            d_model= d_model,
             num_layers=num_layers,
             num_heads=8,
             d_ff= 512,
             dropout_rate=0.1,
             is_decoder=True,
-            add_cross_attention=False,  # No separate encoder states; treat input z as initial state
+            add_cross_attention= True,  # No separate encoder states; treat input z as initial state
             vocab_size=vocab_size,
+            use_cache = True,
         )
         self.decoder = T5Stack(config)
-        self.lm_head = nn.Linear(hidden_size, vocab_size, bias=False)
+        self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
 
     def forward(self, x_ori_input_ids, x_ori_attention_mask, encoder_hidden_states, encoder_attention_mask):
-        
         
         outputs = self.decoder(inputs_embeds= x_ori_input_ids,
             attention_mask= x_ori_attention_mask,
@@ -66,7 +66,7 @@ class EncoderDecoderModule(LightningModule):
         temperature: float = 0.07,
         max_seq_length: int = 50,
         rec_model : Any = None,
-        vector_tokenizer : Any, 
+        vector_tokenizer : Any = VectorTokenizer, 
     ) -> None:
         super().__init__()
 
@@ -76,7 +76,7 @@ class EncoderDecoderModule(LightningModule):
         self.decoder_hidden_size = self.encoder_hidden_size
         self.non_shuffled_datamodule = non_shuffled_datamodule
         self.metadata_embedder = metadata_embedder
-
+        self.rec_model_hiden_size = self.encoder_hidden_size
         self.encoder = encoder_model.encoder
         self.shared = encoder_model.shared
         ##### define decoder
@@ -86,14 +86,14 @@ class EncoderDecoderModule(LightningModule):
         decoder_config.is_decoder = True
         decoder_config.use_cache = True
         decoder_config.add_cross_attention = True
-
+        self.vector_tokenizer = vector_tokenizer
         self.decoder = decoder_model()
         self.temperature = temperature
         
-        
-        self.rec_model = rec_model.model() if rec_model else T5ReconstructionDecoder(hidden_size=self.encoder_hidden_size,
-                vocab_size=input_tokenizer.vocab_size,
-                max_seq_length=max_seq_length)
+        print("d_model: ", encoder_model.config.d_model)
+        print("vocab_size: ", vector_tokenizer.vocab_size)
+        self.rec_model = rec_model.model() if rec_model else T5ReconstructionDecoder(d_model = decoder_config.d_model,
+                vocab_size= vector_tokenizer.vocab_size)
 
         ##### define projecton head(out: 128)
         self.projection_head = nn.Sequential(
@@ -111,6 +111,10 @@ class EncoderDecoderModule(LightningModule):
         self.decoder_input_proj = nn.Linear(
             self.encoder_hidden_size, self.decoder_hidden_size
         )
+
+        self.rec_model_input_proj = nn.Linear(
+            self.encoder_hidden_size, self.rec_model_hiden_size
+        )
         #### define lm head
         self.lm_head = nn.Linear(
             self.decoder_hidden_size, decoder_config.vocab_size, bias=False
@@ -118,7 +122,6 @@ class EncoderDecoderModule(LightningModule):
 
         self.input_tokenizer = input_tokenizer
         self.output_tokenizer = output_tokenizer
-
         self.train_total_loss = MeanMetric()
         self.train_loss = MeanMetric()
         self.train_con_loss = MeanMetric()
@@ -195,6 +198,7 @@ class EncoderDecoderModule(LightningModule):
         labels: Optional[torch.Tensor] = None,
         x_ori_input_ids: torch.Tensor = None,
         x_ori_label: Optional[torch.Tensor] = None,
+        x_ori_attention_mask : Optional[torch.Tensor] = None, 
     ) -> torch.Tensor:
         # Encoder
         input_embeds = self.shared(input_ids)
@@ -207,8 +211,18 @@ class EncoderDecoderModule(LightningModule):
         mean_pooled = self._mean_pooling(encoder_hidden_states, attention_mask)
         projected_embeddings = self.projection_head(mean_pooled)
         # Reconstruction from projected embeddings
-        recon_outputs = self.rec_model(mean_pooled, x_ori_input_ids)
+        if x_ori_input_ids is not None:
+            x_ori_inputs = self.shared(x_ori_input_ids)
+            x_ori_inputs = self.rec_model_input_proj(x_ori_inputs)
+
+
+        recon_outputs = self.rec_model(x_ori_input_ids = x_ori_inputs, 
+                                       x_ori_attention_mask = x_ori_attention_mask,
+                                       encoder_hidden_states= encoder_hidden_states,
+                                       encoder_attention_mask = attention_mask)
+
         rec_loss = self.rec_loss(x_ori_label, recon_outputs) if input_ids is not None else None
+        
 
 
 
@@ -255,6 +269,9 @@ class EncoderDecoderModule(LightningModule):
             decoder_input_ids=batch["decoder_input_ids"],
             decoder_attention_mask=batch["decoder_attention_mask"],
             labels=batch["labels"],
+            x_ori_input_ids = batch["x_ori_input_ids"],
+            x_ori_label = batch["x_ori_label"],
+            x_ori_attention_mask = batch["x_ori_attention_mask"], 
         )
         loss = outputs.loss
         return loss, outputs, batch["labels"]
@@ -277,6 +294,9 @@ class EncoderDecoderModule(LightningModule):
             decoder_input_ids=batch["decoder_input_ids"],
             decoder_attention_mask=batch["decoder_attention_mask"],
             labels=batch["labels"],
+            x_ori_input_ids = batch["x_ori_input_ids"],
+            x_ori_label = batch["x_ori_label"],
+            x_ori_attention_mask = batch["x_ori_attention_mask"], 
         )
         #### prediction loss
         main_loss = outputs.loss
@@ -378,6 +398,9 @@ class EncoderDecoderModule(LightningModule):
             decoder_input_ids=batch["decoder_input_ids"],
             decoder_attention_mask=batch["decoder_attention_mask"],
             labels=batch["labels"],
+            x_ori_input_ids = batch["x_ori_input_ids"],
+            x_ori_label = batch["x_ori_label"],
+            x_ori_attention_mask = batch["x_ori_attention_mask"], 
         )
         ### get main loss and rec loss
         main_loss = outputs.loss

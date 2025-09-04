@@ -203,7 +203,7 @@ class VectorTokenizer(PreTrainedTokenizer):
         vec_start_token="[",
         vec_end_token="]",
         max_length=128,
-        max_vector_length=10,  # Maximum number of elements in a vector
+        max_vector_length=10,  
         **kwargs,
     ) -> None:
         # Initialize the number tokenizer

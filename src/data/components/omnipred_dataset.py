@@ -141,6 +141,7 @@ class OmnipredDataset(Dataset):
             "ori_x": x_ori,
             "x_ori_label": x_ori_label,
             "x_ori_input_ids": x_ori_input_ids,
+            "x_ori_attention_mask": x_ori_token["attention_mask"].squeeze(),
         }
 
     def _shift_right(self, input_ids, pad_token_id, decoder_start_token_id):
